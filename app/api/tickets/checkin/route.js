@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import Ticket from '@/models/ticket';
+import Ticket from '@/models/Ticket';
 // Add authentication logic if needed
 
 export async function POST(request) {

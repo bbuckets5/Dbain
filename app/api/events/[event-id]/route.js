@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import Submission from '@/models/submission'; // CORRECT MODEL: Use the Submission model
+import Submission from '@/models/Event'; // CORRECT MODEL: Use the Submission model
 
 export async function GET(request, { params }) {
     try {

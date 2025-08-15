@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/dbConnect';
-import Ticket from '@/models/ticket';
+import Ticket from '@/models/Ticket';
 import { cookies } from 'next/headers'; // Use this for Next.js 13+
 import jwt from 'jsonwebtoken';
 import User from '@/models/User';

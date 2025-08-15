@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
-import Ticket from '@/models/ticket';
+import Ticket from '@/models/Ticket';
 import Event from '@/models/Event';
 import User from '@/models/User';
 import jwt from 'jsonwebtoken';

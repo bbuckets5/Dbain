@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import cloudinary from 'cloudinary';
-import Submission from '@/models/submission';
+import Submission from '@/models/Event';
 import User from '@/models/User';
 
 // Configure Cloudinary

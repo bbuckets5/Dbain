@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
-import Submission from '@/models/submission';
+import Submission from '@/models/Event';
 import User from '@/models/User';
 
 export async function GET(request) {

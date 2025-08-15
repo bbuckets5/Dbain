@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 // We no longer need to import 'cookies' from next/headers
 import User from '@/models/User';
-import Ticket from '@/models/ticket';
+import Ticket from '@/models/Ticket';
 import Event from '@/models/Event';
 import dbConnect from '@/lib/dbConnect';
 

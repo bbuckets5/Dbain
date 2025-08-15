@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import dbConnect from '@/lib/dbConnect';
 import Event from '@/models/Event';
-import Ticket from '@/models/ticket'; // Import the Ticket model
+import Ticket from '@/models/Ticket'; // Import the Ticket model
 import User from '@/models/User';
 import cloudinary from 'cloudinary';
 
