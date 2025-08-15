@@ -11,7 +11,8 @@ export default function Footer() {
                 <Link href="/purchase-policy">Purchase Policy</Link>
             </div>
             <div className="footer-column">
-                <h4>Let's Connect</h4>
+                {/* FIXED: Replaced 'Let's' with 'Let&apos;s' */}
+                <h4>Let&apos;s Connect</h4>
                 <div className="social-icons">
                     <a href="#" aria-label="Facebook"><i className="fab fa-facebook-f"></i> Facebook</a>
                     <a href="#" aria-label="Instagram"><i className="fab fa-instagram"></i> Instagram</a>

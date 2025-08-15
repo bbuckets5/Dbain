@@ -1,6 +1,7 @@
 // In app/events/[event-id]/page.js
 
 import Link from 'next/link';
+import Image from 'next/image'; // Added this import
 import Event from '../../../models/Event.js';
 import TicketManager from '@/components/TicketManager';
 import dbConnect from '../../../lib/dbConnect';
@@ -16,7 +17,8 @@ async function EventDetails({ eventId }) {
             return (
                 <main className="main-content">
                     <h1>Event Not Found</h1>
-                    <p>Sorry, we couldn't find the event you were looking for, or it is not currently available.</p>
+                    {/* FIXED: Replaced 'couldn't' with 'couldn&apos;t' */}
+                    <p>Sorry, we couldn&apos;t find the event you were looking for, or it is not currently available.</p>
                     <Link href="/" className="cta-button">Back to Events</Link>
                 </main>
             );
@@ -36,7 +38,13 @@ async function EventDetails({ eventId }) {
             <main className="main-content">
                 <div className="event-details-container glass">
                     <div className="event-image-box">
-                        <img src={event.flyerImagePath || '/placeholder.png'} alt={event.eventName} />
+                        {/* FIXED: Replaced <img> with <Image /> for optimization */}
+                        <Image 
+                            src={event.flyerImagePath || '/placeholder.png'} 
+                            alt={event.eventName}
+                            width={500} // Adjust these values as needed for your design
+                            height={300} // Adjust these values as needed for your design
+                        />
                     </div>
                     <div className="event-info-box">
                         <h1>{event.eventName}</h1>
@@ -54,7 +62,6 @@ async function EventDetails({ eventId }) {
                             tickets={event.tickets} 
                             eventName={event.eventName}
                             isSoldOut={isSoldOut}
-                            // ++ THIS IS THE FIX ++
                             eventId={event._id}
                         />
                     </div>

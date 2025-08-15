@@ -76,7 +76,8 @@ export default function LoginPage() {
             </form>
 
             <p style={{ textAlign: 'center', marginTop: '20px' }}>
-                Don't have an account? <Link href="/signup">Sign up here</Link>
+                {/* FIXED: Replaced 'Don't' with 'Don&apos;t' */}
+                Don&apos;t have an account? <Link href="/signup">Sign up here</Link>
             </p>
         </div>
     );
