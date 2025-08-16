@@ -23,18 +23,13 @@ async function EventDetails({ eventId }) {
             );
         }
         
-        // --- NEW LOGIC ADDED HERE ---
-
-        // 1. Check if the event start time has passed.
-        // We combine the date and time from your database into a single JavaScript Date object.
-        const eventStartDateTime = new Date(`${event.eventDate.substring(0, 10)}T${event.eventTime}`);
+        // --- THIS IS THE CORRECTED LINE ---
+        // This new version safely handles the date whether it's a string or a Date object.
+        const eventStartDateTime = new Date(`${new Date(event.eventDate).toISOString().substring(0, 10)}T${event.eventTime}`);
         const now = new Date();
         const eventHasStarted = now > eventStartDateTime;
         
-        // 2. Check if the event is sold out.
         const isSoldOut = event.ticketsSold >= event.ticketCount;
-
-        // --- END OF NEW LOGIC ---
 
         const eventDateTime = new Date(event.eventDate);
         const formattedDate = eventDateTime.toLocaleDateString(undefined, {
@@ -67,14 +62,11 @@ async function EventDetails({ eventId }) {
                                 <p key={index}>{paragraph}</p>
                             ))}
                         </div>
-
-                        {/* --- UPDATED PROPS FOR TicketManager --- */}
-                        {/* 3. We now pass the 'eventHasStarted' status to the TicketManager */}
                         <TicketManager 
                             tickets={event.tickets} 
                             eventName={event.eventName}
                             isSoldOut={isSoldOut}
-                            eventHasStarted={eventHasStarted} // <-- New prop
+                            eventHasStarted={eventHasStarted}
                             eventId={event._id}
                         />
                     </div>

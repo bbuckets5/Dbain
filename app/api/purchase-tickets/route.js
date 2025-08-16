@@ -10,7 +10,6 @@ import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
 import jwt from 'jsonwebtoken';
 
-// Helper to format time for emails
 function formatTimeServer(timeString) {
     if (!timeString) return '';
     const [hour, minute] = timeString.split(':');
@@ -23,7 +22,7 @@ function formatTimeServer(timeString) {
 export async function POST(request) {
     await dbConnect();
     const session = await mongoose.startSession();
-    session.startTransaction(); // Start a transaction
+    session.startTransaction();
 
     try {
         const body = await request.json();
@@ -54,13 +53,13 @@ export async function POST(request) {
                 throw new Error(`Event with ID ${purchaseItem.eventId} is not available for purchase.`);
             }
 
-            // --- NEW SECURITY CHECK ADDED HERE ---
-            const eventStartDateTime = new Date(`${event.eventDate.substring(0, 10)}T${event.eventTime}`);
+            // --- THIS IS THE CORRECTED LINE ---
+            // This new version safely handles the date whether it's a string or a Date object.
+            const eventStartDateTime = new Date(`${new Date(event.eventDate).toISOString().substring(0, 10)}T${event.eventTime}`);
             const now = new Date();
             if (now > eventStartDateTime) {
                 throw new Error(`Ticket sales for "${event.eventName}" have closed because the event has already started.`);
             }
-            // --- END OF SECURITY CHECK ---
 
             let totalTicketsRequestedForEvent = 0;
             for (const ticketRequest of purchaseItem.tickets) {
