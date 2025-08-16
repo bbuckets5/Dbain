@@ -117,6 +117,9 @@ export default function CheckoutPage() {
             router.push(redirectUrl);
 
         } catch (err) {
+            // --- THIS IS THE FIX ---
+            // We now show a pop-up alert with the specific error message from the API.
+            alert(`Purchase Failed: ${err.message}`);
             setError(err.message);
         } finally {
             setIsLoading(false);
