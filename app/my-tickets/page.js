@@ -22,28 +22,32 @@ export default function MyTicketsPage() {
 
                 const validTickets = tickets.filter(ticket => ticket.eventId);
 
-                // --- FIX #1: CORRECTED FILTERING LOGIC ---
+                // --- THIS IS THE DEFINITIVE FIX FOR FILTERING ---
                 const now = new Date();
                 const upcoming = [];
                 const past = [];
 
                 validTickets.forEach(ticket => {
-                    // Create a date object based on the UTC date from the database
-                    const eventDate = new Date(ticket.eventId.eventDate);
-                    // Get the time parts (e.g., "22:00")
-                    const [hour, minute] = ticket.eventId.eventTime.split(':');
-                    
-                    // Set the hours and minutes in UTC to get the exact event start time
-                    eventDate.setUTCHours(hour, minute, 0, 0);
+                    // Extract the date part (YYYY-MM-DD) from the UTC string
+                    const datePart = ticket.eventId.eventDate.substring(0, 10);
+                    // Get the time string (HH:MM)
+                    const timePart = ticket.eventId.eventTime;
 
-                    // Now, compare the precise event start time with the current time
-                    if (eventDate > now) {
+                    // Combine them into a string representing the event's local time
+                    const eventLocalTimeString = `${datePart}T${timePart}`;
+                    
+                    // Create a Date object from the local time string.
+                    // The browser will correctly interpret this as being in its own timezone (e.g., EDT).
+                    const eventStartDateTime = new Date(eventLocalTimeString);
+
+                    // Compare the local event time with the current local time
+                    if (eventStartDateTime > now) {
                         upcoming.push(ticket);
                     } else {
                         past.push(ticket);
                     }
                 });
-                // --- END OF FIX #1 ---
+                // --- END OF FIX ---
 
                 setUpcomingTickets(upcoming);
                 setPastTickets(past);
@@ -69,8 +73,6 @@ export default function MyTicketsPage() {
     const TicketItem = ({ ticket }) => {
         const { eventId, ticketType, _id } = ticket;
 
-        // --- FIX #2: CORRECTED DATE DISPLAY ---
-        // We add { timeZone: 'UTC' } to prevent the date from shifting to the previous day
         const formattedDate = new Date(eventId.eventDate).toLocaleDateString('en-US', {
             timeZone: 'UTC', 
             month: 'numeric', 
@@ -128,7 +130,6 @@ export default function MyTicketsPage() {
                 </button>
             </div>
 
-            {/* QR Code Modal */}
             {visibleQrCode && (
                 <div className="modal-overlay" onClick={() => setVisibleQrCode(null)}>
                     <div className="modal-content glass" onClick={(e) => e.stopPropagation()}>
