@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import dbConnect from '../lib/dbConnect';
-import Event from '../models/Event'; // Using our renamed Event model
+import Event from '../models/Event';
 
-// Helper function to format time (can be moved to a utils file later)
 function formatTime(timeString) {
   if (!timeString) return '';
   const [hour, minute] = timeString.split(':');
@@ -12,11 +11,9 @@ function formatTime(timeString) {
   return `${formattedHour}:${minute} ${ampm}`;
 }
 
-// This is an async Server Component
 export default async function HomePage() {
   await dbConnect();
   
-  // Fetch approved events directly from the database
   const events = await Event.find({ status: 'approved' }).sort({ eventDate: 1 }).lean();
 
   return (
@@ -38,7 +35,6 @@ export default async function HomePage() {
                 <h3>{event.eventName}</h3>
                 <p>
                   <i className="fas fa-calendar-alt"></i> 
-                  {/* --- THIS IS THE CORRECTED DATE DISPLAY --- */}
                   {new Date(event.eventDate).toLocaleDateString('en-US', { 
                       timeZone: 'UTC',
                       month: 'numeric', 
@@ -59,6 +55,15 @@ export default async function HomePage() {
           ))
         )}
       </div>
+
+      {/* --- THIS IS THE BUTTON IN ITS CORRECT LOCATION --- */}
+      <div className="ticket-your-event-container" style={{ textAlign: 'center', margin: '40px 0' }}>
+          <Link href="/ticket-form" className="cta-button">
+              Ticket Your Event
+          </Link>
+      </div>
+      {/* --- END OF SECTION --- */}
+
     </main>
   );
 }
