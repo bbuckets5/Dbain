@@ -3,9 +3,10 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import dbConnect from '@/lib/dbConnect';
 import Event from '@/models/Event';
-import Ticket from '@/models/Ticket'; // Import the Ticket model
+import Ticket from '@/models/Ticket';
 import User from '@/models/User';
 import cloudinary from 'cloudinary';
+import mongoose from 'mongoose';
 
 // Configure Cloudinary (ensure these are in your .env.local)
 cloudinary.v2.config({
@@ -24,15 +25,13 @@ const uploadToCloudinary = (fileBuffer) =>
     uploadStream.end(fileBuffer);
   });
 
-
-// GET handler (no changes)
+// GET handler
 export async function GET(request, { params }) {
-    // ... your existing GET logic ...
     try {
         await dbConnect();
         const { eventId } = params;
 
-        const cookieStore = await cookies();
+        const cookieStore = cookies();
         const token = cookieStore.get('authToken')?.value;
         if (!token) {
             return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
@@ -42,6 +41,9 @@ export async function GET(request, { params }) {
         if (!adminUser || adminUser.role !== 'admin') {
             return NextResponse.json({ message: 'Forbidden: Admins only.' }, { status: 403 });
         }
+if (!mongoose.Types.ObjectId.isValid(eventId)) {
+return NextResponse.json({ message: 'Invalid Event ID.' }, { status: 400 });
+}
 
         const event = await Event.findById(eventId);
         if (!event) {
@@ -55,19 +57,21 @@ export async function GET(request, { params }) {
     }
 }
 
-// PUT handler (no changes)
+// PUT handler
 export async function PUT(request, { params }) {
-    // ... your existing PUT logic ...
-     try {
+    try {
         await dbConnect();
         const { eventId } = params;
 
-        const cookieStore = await cookies();
+        const cookieStore = cookies();
         const token = cookieStore.get('authToken')?.value;
         if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         let decoded = jwt.verify(token, process.env.JWT_SECRET);
         const adminUser = await User.findById(decoded.userId).lean();
         if (!adminUser || adminUser.role !== 'admin') return NextResponse.json({ message: 'Forbidden: Admins only.' }, { status: 403 });
+if (!mongoose.Types.ObjectId.isValid(eventId)) {
+return NextResponse.json({ message: 'Invalid Event ID.' }, { status: 400 });
+}
 
         const formData = await request.formData();
         const updateData = {};
@@ -118,22 +122,73 @@ export async function PUT(request, { params }) {
     }
 }
 
-// ++ NEW: DELETE handler for permanently deleting an event ++
-export async function DELETE(request, { params }) {
-    await dbConnect();
+// PATCH function to update event status (the new code)
+export async function PATCH(request, { params }) {
+try {
+await dbConnect();
+const { eventId } = params;
 
+// Admin authentication
+const cookieStore = cookies();
+const token = cookieStore.get('authToken')?.value;
+if (!token) {
+return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+}
+let decoded = jwt.verify(token, process.env.JWT_SECRET);
+const adminUser = await User.findById(decoded.userId).lean();
+if (!adminUser || adminUser.role !== 'admin') {
+return NextResponse.json({ message: 'Forbidden: Admins only.' }, { status: 403 });
+}
+
+if (!mongoose.Types.ObjectId.isValid(eventId)) {
+return NextResponse.json({ message: 'Invalid Event ID.' }, { status: 400 });
+}
+
+const body = await request.json();
+const { status } = body;
+
+if (status !== 'completed') {
+return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
+}
+
+const updatedEvent = await Event.findByIdAndUpdate(
+eventId,
+{ status: 'completed' },
+{ new: true, runValidators: true }
+);
+
+if (!updatedEvent) {
+return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
+}
+
+return NextResponse.json({ message: 'Event marked as completed successfully.', event: updatedEvent }, { status: 200 });
+
+} catch (error) {
+console.error("Error updating event status:", error);
+return NextResponse.json({ message: 'Server error updating event status.' }, { status: 500 });
+}
+}
+
+
+// DELETE handler for permanently deleting an event
+export async function DELETE(request, { params }) {
     try {
+await dbConnect();
+
         const { eventId } = params;
 
         // --- Admin Authentication ---
-        const cookieStore = await cookies();
+        const cookieStore = cookies();
         const token = cookieStore.get('authToken')?.value;
         if (!token) throw new Error('Unauthorized');
-        
+       
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findById(decoded.userId).lean();
         if (!user || user.role !== 'admin') throw new Error('Forbidden: Admins only.');
         // --- End Authentication ---
+if (!mongoose.Types.ObjectId.isValid(eventId)) {
+return NextResponse.json({ message: 'Invalid Event ID.' }, { status: 400 });
+}
 
         const eventToDelete = await Event.findById(eventId);
         if (!eventToDelete) {
@@ -145,7 +200,7 @@ export async function DELETE(request, { params }) {
             const publicId = eventToDelete.flyerImagePath.split('/').pop().split('.')[0];
             await cloudinary.v2.uploader.destroy(`event-flyers/${publicId}`);
         }
-        
+       
         // 2. Delete all associated tickets to maintain data integrity
         await Ticket.deleteMany({ eventId: eventId });
 

@@ -61,16 +61,15 @@ export default function EventDetailsPage({ params }) {
 
     const isSoldOut = event.ticketsSold >= event.ticketCount;
     
-    const formattedDate = new Date(event.eventDate).toLocaleDateString('en-US', {
-        timeZone: 'UTC',
+    const formattedDate = new Date(event.eventDate).toLocaleDateString(undefined, {
         weekday: 'long', 
         year: 'numeric', 
         month: 'long', 
         day: 'numeric'
     });
     
-    const formattedTime = new Date(`1970-01-01T${event.eventTime}Z`).toLocaleTimeString('en-US', {
-        hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC'
+    const formattedTime = new Date(`1970-01-01T${event.eventTime}Z`).toLocaleTimeString(undefined, {
+        hour: 'numeric', minute: '2-digit', hour12: true
     });
 
     return (
