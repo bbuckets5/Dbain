@@ -66,50 +66,60 @@ export default function TicketFormPage() {
         setMessage(null);
 
         if (!flyer) {
-            alert("Please select an event flyer.");
+            setMessage({ type: 'error', text: 'Please select an event flyer.' });
             setIsLoading(false);
             return;
         }
 
-        const formData = new FormData();
-        formData.append('firstName', firstName);
-        formData.append('lastName', lastName);
-        formData.append('businessName', businessName);
-        formData.append('eventName', eventName);
-        formData.append('eventDate', eventDate);
-        formData.append('eventLocation', eventLocation);
-        formData.append('eventTime', eventTime);
-        formData.append('phone', phone);
-        formData.append('ticketCount', ticketCount);
-        formData.append('eventDescription', eventDescription);
-
-        ticketTypes.forEach(ticket => {
-            formData.append('ticket_type[]', ticket.type);
-            formData.append('ticket_price[]', ticket.price);
-            formData.append('ticket_includes[]', ticket.includes);
-        });
-
-        const options = {
-            maxSizeMB: 2,
-            maxWidthOrHeight: 1920,
-            useWebWorker: true,
-        };
-
         try {
-            const compressedFile = await imageCompression(flyer, options);
-            formData.append('flyer', compressedFile, compressedFile.name);
+            // 1. Get the secure signature from our API
+            const signResponse = await fetch('/api/sign-upload');
+            if (!signResponse.ok) throw new Error('Could not get upload signature.');
+            const signData = await signResponse.json();
 
-            const response = await fetch('/api/submit', {
-                method: 'POST',
-                body: formData,
+            // 2. Compress the image on the client-side
+            const compressedFile = await imageCompression(flyer, {
+                maxSizeMB: 2,
+                maxWidthOrHeight: 1920,
+                useWebWorker: true,
             });
 
-            const result = await response.json();
+            // 3. Prepare FormData for a direct upload to Cloudinary
+            const uploadFormData = new FormData();
+            uploadFormData.append('file', compressedFile);
+            uploadFormData.append('api_key', signData.api_key);
+            uploadFormData.append('timestamp', signData.timestamp);
+            uploadFormData.append('signature', signData.signature);
+            uploadFormData.append('folder', 'event-flyers');
 
-            if (!response.ok) {
-                throw new Error(result.message || 'Something went wrong');
-            }
+            const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
             
+            const uploadResponse = await fetch(cloudinaryUrl, {
+                method: 'POST',
+                body: uploadFormData,
+            });
+            
+            if (!uploadResponse.ok) throw new Error('Failed to upload flyer to Cloudinary.');
+            const uploadData = await uploadResponse.json();
+
+            // 4. Now, submit the event details (with image URLs) to our own API
+            const eventPayload = {
+                firstName, lastName, businessName, eventName, eventDate,
+                eventLocation, eventTime, phone, ticketCount, eventDescription,
+                ticketTypes,
+                flyerPublicId: uploadData.public_id,
+                flyerSecureUrl: uploadData.secure_url,
+            };
+
+            const submitResponse = await fetch('/api/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(eventPayload),
+            });
+            
+            const result = await submitResponse.json();
+            if (!submitResponse.ok) throw new Error(result.message || 'Failed to submit event details.');
+
             setMessage({ type: 'success', text: result.message });
             resetForm();
 
