@@ -45,7 +45,7 @@ export default function EventDetailsPage({ params }) {
         return (
             <main className="main-content">
                 <h1>Event Not Found</h1>
-                <p>Sorry, we couldn't find the event you were looking for, or it is not currently available.</p>
+                <p>Sorry, we couldn&apos;t find the event you were looking for, or it is not currently available.</p>
                 <Link href="/" className="cta-button">Back to Events</Link>
             </main>
         );
