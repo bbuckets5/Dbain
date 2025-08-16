@@ -1,11 +1,11 @@
-// app/purchase-confirmation/page.js
-"use client"; // 1. Convert to a Client Component
+// In app/purchase-confirmation/page.js
+"use client";
 
 import Link from 'next/link';
-import { useUser } from '@/components/UserContext'; // 2. Import the useUser hook
+import { useUser } from '@/components/UserContext';
 
 export default function PurchaseConfirmationPage() {
-    const { user } = useUser(); // 3. Get the current user from the context
+    const { user } = useUser();
 
     return (
         <div className="glass" style={{ padding: '50px', textAlign: 'center', maxWidth: '600px', margin: '50px auto' }}>
@@ -15,9 +15,9 @@ export default function PurchaseConfirmationPage() {
             <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
                 <Link href="/" className="cta-button" style={{ fontSize: '1rem', padding: '10px 20px' }}>Continue Shopping</Link>
                 
-                {/* 4. Only show this button if a user is logged in */}
                 {user && (
-                    <Link href="/mytickets" id="view-my-tickets-btn" className="cta-button" style={{ fontSize: '1rem', padding: '10px 20px' }}>View My Tickets</Link>
+                    // --- THE FIX: Added a hyphen to the href ---
+                    <Link href="/my-tickets" id="view-my-tickets-btn" className="cta-button" style={{ fontSize: '1rem', padding: '10px 20px' }}>View My Tickets</Link>
                 )}
             </div>
         </div>
