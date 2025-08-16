@@ -1,5 +1,3 @@
-// In app/events/[event-id]/page.js
-
 import Link from 'next/link';
 import Image from 'next/image';
 import Event from '../../../models/Event.js';
@@ -23,8 +21,6 @@ async function EventDetails({ eventId }) {
             );
         }
         
-        // --- THIS IS THE CORRECTED LINE ---
-        // This new version safely handles the date whether it's a string or a Date object.
         const eventStartDateTime = new Date(`${new Date(event.eventDate).toISOString().substring(0, 10)}T${event.eventTime}`);
         const now = new Date();
         const eventHasStarted = now > eventStartDateTime;
@@ -32,9 +28,17 @@ async function EventDetails({ eventId }) {
         const isSoldOut = event.ticketsSold >= event.ticketCount;
 
         const eventDateTime = new Date(event.eventDate);
-        const formattedDate = eventDateTime.toLocaleDateString(undefined, {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        
+        // --- THIS IS THE CORRECTED LINE ---
+        // Added { timeZone: 'UTC' } to ensure the date is displayed consistently.
+        const formattedDate = eventDateTime.toLocaleDateString('en-US', {
+            timeZone: 'UTC',
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric'
         });
+
         const formattedTime = new Date(`1970-01-01T${event.eventTime}Z`).toLocaleTimeString('en-US', {
             hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC'
         });

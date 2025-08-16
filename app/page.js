@@ -1,4 +1,3 @@
-// app/page.js
 import Link from 'next/link';
 import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event'; // Using our renamed Event model
@@ -38,7 +37,14 @@ export default async function HomePage() {
                 />
                 <h3>{event.eventName}</h3>
                 <p>
-                  <i className="fas fa-calendar-alt"></i> {new Date(event.eventDate).toLocaleDateString()}
+                  <i className="fas fa-calendar-alt"></i> 
+                  {/* --- THIS IS THE CORRECTED DATE DISPLAY --- */}
+                  {new Date(event.eventDate).toLocaleDateString('en-US', { 
+                      timeZone: 'UTC',
+                      month: 'numeric', 
+                      day: 'numeric', 
+                      year: '2-digit'
+                  })}
                   <span className="info-separator"> &bull; </span>
                   <i className="fas fa-clock"></i> {formatTime(event.eventTime)}
                 </p>

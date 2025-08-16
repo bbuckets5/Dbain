@@ -1,4 +1,3 @@
-// In app/my-tickets/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -21,25 +20,30 @@ export default function MyTicketsPage() {
                 }
                 const tickets = await response.json();
 
-                // --- THIS IS THE FIX ---
-                // We filter out any tickets where the event has been deleted (eventId is null).
                 const validTickets = tickets.filter(ticket => ticket.eventId);
 
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
+                // --- FIX #1: CORRECTED FILTERING LOGIC ---
+                const now = new Date();
                 const upcoming = [];
                 const past = [];
 
-                // We now loop over the filtered validTickets instead of all tickets
                 validTickets.forEach(ticket => {
+                    // Create a date object based on the UTC date from the database
                     const eventDate = new Date(ticket.eventId.eventDate);
-                    if (eventDate >= today) {
+                    // Get the time parts (e.g., "22:00")
+                    const [hour, minute] = ticket.eventId.eventTime.split(':');
+                    
+                    // Set the hours and minutes in UTC to get the exact event start time
+                    eventDate.setUTCHours(hour, minute, 0, 0);
+
+                    // Now, compare the precise event start time with the current time
+                    if (eventDate > now) {
                         upcoming.push(ticket);
                     } else {
                         past.push(ticket);
                     }
                 });
+                // --- END OF FIX #1 ---
 
                 setUpcomingTickets(upcoming);
                 setPastTickets(past);
@@ -64,7 +68,16 @@ export default function MyTicketsPage() {
 
     const TicketItem = ({ ticket }) => {
         const { eventId, ticketType, _id } = ticket;
-        const formattedDate = new Date(eventId.eventDate).toLocaleDateString();
+
+        // --- FIX #2: CORRECTED DATE DISPLAY ---
+        // We add { timeZone: 'UTC' } to prevent the date from shifting to the previous day
+        const formattedDate = new Date(eventId.eventDate).toLocaleDateString('en-US', {
+            timeZone: 'UTC', 
+            month: 'numeric', 
+            day: 'numeric', 
+            year: '2-digit'
+        });
+        
         const formatTime = (timeStr) => {
             if (!timeStr) return '';
             const [hour, minute] = timeStr.split(':');
