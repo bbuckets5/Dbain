@@ -29,7 +29,6 @@ export async function POST(request) {
         const body = await request.json();
         const { purchases, customerInfo } = body;
 
-        // Basic validation
         if (!purchases || !customerInfo || purchases.length === 0) {
             throw new Error('Missing purchase or customer information.');
         }
@@ -37,7 +36,6 @@ export async function POST(request) {
         let allTicketsForDb = [];
         let allTicketsForEmail = [];
 
-        // Check for an auth token to associate the purchase with a user
         const token = request.cookies.get('authToken')?.value;
         let userId = null;
         if (token) {
@@ -49,13 +47,20 @@ export async function POST(request) {
             }
         }
 
-        // 1. Validate all items in the cart and check inventory
         for (const purchaseItem of purchases) {
             const event = await Event.findById(purchaseItem.eventId).session(session);
             
             if (!event || event.status !== 'approved') {
                 throw new Error(`Event with ID ${purchaseItem.eventId} is not available for purchase.`);
             }
+
+            // --- NEW SECURITY CHECK ADDED HERE ---
+            const eventStartDateTime = new Date(`${event.eventDate.substring(0, 10)}T${event.eventTime}`);
+            const now = new Date();
+            if (now > eventStartDateTime) {
+                throw new Error(`Ticket sales for "${event.eventName}" have closed because the event has already started.`);
+            }
+            // --- END OF SECURITY CHECK ---
 
             let totalTicketsRequestedForEvent = 0;
             for (const ticketRequest of purchaseItem.tickets) {
@@ -66,29 +71,25 @@ export async function POST(request) {
                 totalTicketsRequestedForEvent += ticketRequest.quantity;
             }
 
-            // === THE CRITICAL "SOLD OUT" CHECK ===
             if (event.ticketsSold + totalTicketsRequestedForEvent > event.ticketCount) {
                 throw new Error(`Sorry, not enough tickets available for "${event.eventName}". Purchase blocked.`);
             }
 
-            // If check passes, update the event's sold count
             event.ticketsSold += totalTicketsRequestedForEvent;
             await event.save({ session });
 
-            // Prepare ticket documents for creation
             for (const ticketRequest of purchaseItem.tickets) {
                 const ticketOption = event.tickets.find(t => t.type === ticketRequest.name);
                 for (let i = 0; i < ticketRequest.quantity; i++) {
                     allTicketsForDb.push({
                         eventId: event._id,
-                        userId: userId, // Will be null for guests
+                        userId: userId,
                         ticketType: ticketRequest.name,
                         price: ticketOption.price,
                         customerFirstName: customerInfo.firstName,
                         customerLastName: customerInfo.lastName,
                         customerEmail: customerInfo.email,
                     });
-                    // Also prepare data needed for the confirmation email
                     allTicketsForEmail.push({
                         eventName: event.eventName,
                         eventDate: event.eventDate,
@@ -99,13 +100,10 @@ export async function POST(request) {
             }
         }
 
-        // 2. Create all ticket documents in the database
         const savedTicketDocs = await Ticket.insertMany(allTicketsForDb, { session });
         
-        // 3. If all database operations succeed, commit the transaction
         await session.commitTransaction();
 
-        // 4. Send the confirmation email (outside the transaction)
         const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
         const sender = new Sender(process.env.FROM_EMAIL_ADDRESS, "Click eTickets");
         const recipient = new Recipient(customerInfo.email);
@@ -147,12 +145,11 @@ export async function POST(request) {
         return NextResponse.json({ message: 'Purchase successful!' }, { status: 200 });
 
     } catch (error) {
-        // If any error occurred, abort the transaction
         await session.abortTransaction();
         console.error("Purchase failed:", error);
         return NextResponse.json({ message: error.message || 'Failed to complete purchase.' }, { status: 500 });
     } finally {
-        // End the session
         session.endSession();
     }
 }
+

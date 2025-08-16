@@ -8,8 +8,8 @@ function showCustomAlert(title, message, type) {
     alert(`${title}: ${message}`);
 }
 
-// ++ FIX: Accept the new 'eventId' and 'isSoldOut' props ++
-export default function TicketManager({ tickets, eventName, isSoldOut, eventId }) {
+// 1. Accept the new 'eventHasStarted' prop
+export default function TicketManager({ tickets, eventName, isSoldOut, eventHasStarted, eventId }) {
     const { addToCart } = useUser(); 
     const [quantities, setQuantities] = useState({});
 
@@ -27,7 +27,6 @@ export default function TicketManager({ tickets, eventName, isSoldOut, eventId }
         }
 
         const newItem = {
-            // ++ FIX: Create a unique ID from both the event and ticket IDs ++
             id: `${eventId}_${ticket._id}`,
             name: ticket.type, 
             quantity: quantity,
@@ -38,6 +37,16 @@ export default function TicketManager({ tickets, eventName, isSoldOut, eventId }
         addToCart(newItem);
         showCustomAlert('Cart Updated', `${quantity} x ${ticket.type} ticket(s) for "${eventName}" added!`, 'success');
     };
+
+    // 2. Add a check for 'eventHasStarted' at the top
+    if (eventHasStarted) {
+        return (
+            <div className="ticket-purchase-area event-started">
+                <h3>Ticket Sales Closed</h3>
+                <p className="info-msg"><i className="fas fa-clock"></i> This event has already started.</p>
+            </div>
+        );
+    }
 
     if (isSoldOut) {
         return (

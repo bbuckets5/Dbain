@@ -1,7 +1,7 @@
 // In app/events/[event-id]/page.js
 
 import Link from 'next/link';
-import Image from 'next/image'; // Added this import
+import Image from 'next/image';
 import Event from '../../../models/Event.js';
 import TicketManager from '@/components/TicketManager';
 import dbConnect from '../../../lib/dbConnect';
@@ -17,14 +17,24 @@ async function EventDetails({ eventId }) {
             return (
                 <main className="main-content">
                     <h1>Event Not Found</h1>
-                    {/* FIXED: Replaced 'couldn't' with 'couldn&apos;t' */}
                     <p>Sorry, we couldn&apos;t find the event you were looking for, or it is not currently available.</p>
                     <Link href="/" className="cta-button">Back to Events</Link>
                 </main>
             );
         }
         
+        // --- NEW LOGIC ADDED HERE ---
+
+        // 1. Check if the event start time has passed.
+        // We combine the date and time from your database into a single JavaScript Date object.
+        const eventStartDateTime = new Date(`${event.eventDate.substring(0, 10)}T${event.eventTime}`);
+        const now = new Date();
+        const eventHasStarted = now > eventStartDateTime;
+        
+        // 2. Check if the event is sold out.
         const isSoldOut = event.ticketsSold >= event.ticketCount;
+
+        // --- END OF NEW LOGIC ---
 
         const eventDateTime = new Date(event.eventDate);
         const formattedDate = eventDateTime.toLocaleDateString(undefined, {
@@ -38,12 +48,11 @@ async function EventDetails({ eventId }) {
             <main className="main-content">
                 <div className="event-details-container glass">
                     <div className="event-image-box">
-                        {/* FIXED: Replaced <img> with <Image /> for optimization */}
                         <Image 
                             src={event.flyerImagePath || '/placeholder.png'} 
                             alt={event.eventName}
-                            width={500} // Adjust these values as needed for your design
-                            height={300} // Adjust these values as needed for your design
+                            width={500}
+                            height={300}
                         />
                     </div>
                     <div className="event-info-box">
@@ -58,10 +67,14 @@ async function EventDetails({ eventId }) {
                                 <p key={index}>{paragraph}</p>
                             ))}
                         </div>
+
+                        {/* --- UPDATED PROPS FOR TicketManager --- */}
+                        {/* 3. We now pass the 'eventHasStarted' status to the TicketManager */}
                         <TicketManager 
                             tickets={event.tickets} 
                             eventName={event.eventName}
                             isSoldOut={isSoldOut}
+                            eventHasStarted={eventHasStarted} // <-- New prop
                             eventId={event._id}
                         />
                     </div>
