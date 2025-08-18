@@ -1,4 +1,3 @@
-// components/UserContext.js
 'use client';
 
 import { createContext, useState, useEffect, useContext } from 'react';
@@ -14,27 +13,34 @@ export const UserProvider = ({ children }) => {
 
     useEffect(() => {
         const loadInitialData = async () => {
-            // Load cart from localStorage
-            if (typeof window !== 'undefined') {
-                const storedCart = localStorage.getItem('cartItems');
-                if (storedCart) {
-                    setCart(JSON.parse(storedCart));
-                }
-            }
-
-            // Fetch user profile. The browser automatically sends the cookie.
-            try {
-                const response = await fetch('/api/users/profile');
-                if (response.ok) {
-                    const userData = await response.json();
-                    setUser(userData);
-                } else {
+            const token = localStorage.getItem('authToken');
+            
+            if (token) {
+                try {
+                    const response = await fetch('/api/users/profile', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Look for the user object inside the 'user' key
+                        setUser(data.user); 
+                    } else {
+                        localStorage.removeItem('authToken');
+                        setUser(null);
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch initial user profile:", error);
                     setUser(null);
                 }
-            } catch (error) {
-                console.error("Failed to fetch initial user profile:", error);
-                setUser(null);
             }
+            
+            const storedCart = localStorage.getItem('cartItems');
+            if (storedCart) {
+                setCart(JSON.parse(storedCart));
+            }
+            
             setLoading(false);
         };
         loadInitialData();
@@ -53,9 +59,14 @@ export const UserProvider = ({ children }) => {
                 throw new Error(data.message || 'Login failed.');
             }
             
-            // The API now returns the full user object, so we set it here.
-            setUser(data);
-            return { success: true, user: data };
+            if (data.token && data.user) {
+                localStorage.setItem('authToken', data.token);
+                // Look for the user object inside the 'user' key
+                setUser(data.user);
+                return { success: true, user: data.user };
+            } else {
+                throw new Error('Login response was invalid.');
+            }
 
         } catch (error) {
             console.error("Login process error:", error);
@@ -64,16 +75,17 @@ export const UserProvider = ({ children }) => {
     };
 
     const logout = async () => {
+        localStorage.removeItem('authToken');
+        setUser(null);
+        setCart([]);
+        localStorage.removeItem('cartItems');
+        
         try {
             await fetch('/api/users/logout', { method: 'POST' });
         } catch (error) {
             console.error("Logout API call failed:", error);
         }
-        setUser(null);
-        setCart([]);
-        if (typeof window !== 'undefined') {
-            localStorage.removeItem('cartItems');
-        }
+        
         router.push('/login');
     };
 

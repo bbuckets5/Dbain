@@ -1,14 +1,12 @@
-// In app/my-profile/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUser } from '@/components/UserContext'; // Import the main hook
-import Link from 'next/link'; // Import Link for the admin button
+import { useUser } from '@/components/UserContext';
+import Link from 'next/link';
 
 export default function MyProfilePage() {
     const router = useRouter();
-    // Get user and loading state from the global context instead of fetching again
     const { user, loading } = useUser();
     
     const [openAccordion, setOpenAccordion] = useState(null);
@@ -18,9 +16,8 @@ export default function MyProfilePage() {
     const [passwordMessage, setPasswordMessage] = useState(null);
     const [isPasswordLoading, setIsPasswordLoading] = useState(false);
 
-    // This useEffect now just protects the route
+    // This useEffect correctly protects the route. No changes needed here.
     useEffect(() => {
-        // If the context is done loading and there's still no user, redirect
         if (!loading && !user) {
             router.push('/login');
         }
@@ -40,9 +37,20 @@ export default function MyProfilePage() {
         setPasswordMessage(null);
 
         try {
+            // --- THIS IS THE FIX ---
+            // 1. Get the token from the browser's storage.
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error("You are not logged in.");
+            }
+
             const response = await fetch('/api/users/profile/password', {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                // 2. Include the token in the headers for authentication.
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` 
+                },
                 body: JSON.stringify({ currentPassword, newPassword }),
             });
             const result = await response.json();
@@ -61,7 +69,6 @@ export default function MyProfilePage() {
     };
 
     if (loading || !user) {
-        // Show a loading message while context is loading or before redirect happens
         return <p>Loading your profile...</p>;
     }
 
@@ -69,11 +76,10 @@ export default function MyProfilePage() {
         <div>
             <h1>My Profile</h1>
 
-            {/* Admin Dashboard button now lives here, only visible to admins */}
             {user.role === 'admin' && (
                 <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                     <Link href="/admin-dashboard" className="cta-button">
-                        <i className="fas fa-shield-alt"></i> Admin Dashboard
+                        Admin Dashboard
                     </Link>
                 </div>
             )}
@@ -90,12 +96,12 @@ export default function MyProfilePage() {
             <div className="profile-accordion">
                 <div className="accordion-item">
                     <button className={`accordion-trigger ${openAccordion === 'password' ? 'active' : ''}`} onClick={() => toggleAccordion('password')}>
-                        <span className="trigger-left"><i className="fas fa-key"></i> Change Password</span>
-                        <i className="fas fa-chevron-down"></i>
+                        Change Password
                     </button>
                     {openAccordion === 'password' && (
                         <div className="accordion-content">
                             <form className="accordion-form" onSubmit={handleChangePassword}>
+                                {/* Your form inputs are structured well */}
                                 <div className="form-group">
                                     <label htmlFor="currentPassword">Current Password</label>
                                     <input type="password" id="currentPassword" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
