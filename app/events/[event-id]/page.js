@@ -40,13 +40,13 @@ export default function EventDetailsPage({ params }) {
         return (
             <main className="main-content">
                 <h1>Event Not Found</h1>
-                <p>Sorry, we couldn't find the event you were looking for, or it is not currently available.</p>
+                {/* --- THIS IS THE FIX --- */}
+                <p>Sorry, we couldn&apos;t find the event you were looking for, or it is not currently available.</p>
                 <Link href="/" className="cta-button">Back to Events</Link>
             </main>
         );
     }
     
-    // Keeping your original multi-line date calculation
     const datePart = event.eventDate.substring(0, 10);
     const timePart = event.eventTime;
     const eventLocalTimeString = `${datePart}T${timePart}`;
@@ -56,8 +56,6 @@ export default function EventDetailsPage({ params }) {
 
     const isSoldOut = event.ticketsSold >= event.ticketCount;
     
-    // --- THIS IS THE ONLY CHANGE ---
-    // Added { timeZone: 'UTC' } to both formatters to fix the display bug.
     const formattedDate = new Date(event.eventDate).toLocaleDateString('en-US', {
         weekday: 'long', 
         year: 'numeric', 
