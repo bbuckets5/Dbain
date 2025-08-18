@@ -3,23 +3,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-// Using a single state object is cleaner
 const initialFormState = {
-    firstName: '',
-    lastName: '',
-    businessName: '',
-    eventName: '',
-    eventDate: '',
-    eventLocation: '',
-    eventTime: '',
-    phone: '',
-    ticketCount: '',
-    eventDescription: '',
+    firstName: '', lastName: '', businessName: '', eventName: '',
+    eventDate: '', eventLocation: '', eventTime: '', phone: '',
+    ticketCount: '', eventDescription: '',
     ticketTypes: [{ type: '', price: '', includes: '' }],
 };
 
 export default function TicketFormPage() {
-    const [formState, setFormState] = useState(initialFormState);
+    const [formState, setFormState] =  useState(initialFormState);
     const [flyer, setFlyer] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState(null);
@@ -62,22 +54,19 @@ export default function TicketFormPage() {
         }
 
         try {
-            // 1. Prepare parameters for the signature
             const paramsToSign = {
                 timestamp: Math.round(new Date().getTime() / 1000),
                 folder: 'event-flyers',
             };
             
-            // 2. Get the secure signature from our API using the correct POST method
             const signResponse = await fetch('/api/sign-upload', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ paramsToSign }),
             });
-            if (!signResponse.ok) throw new Error('Could not get upload signature from server.');
+            if (!signResponse.ok) throw new Error('Could not get upload signature.');
             const signData = await signResponse.json();
 
-            // 3. Prepare FormData for the direct upload to Cloudinary
             const uploadFormData = new FormData();
             uploadFormData.append('file', flyer);
             uploadFormData.append('api_key', process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY);
@@ -95,10 +84,9 @@ export default function TicketFormPage() {
             if (!uploadResponse.ok) throw new Error('Failed to upload flyer to Cloudinary.');
             const uploadData = await uploadResponse.json();
 
-            // 4. Submit the final event details to our own API
             const eventPayload = {
                 ...formState,
-                flyerPublicId: uploadData.public_id,   // This ID is now guaranteed to exist
+                flyerPublicId: uploadData.public_id,
                 flyerSecureUrl: uploadData.secure_url,
             };
 
@@ -109,7 +97,7 @@ export default function TicketFormPage() {
             });
             
             const result = await submitResponse.json();
-            if (!submitResponse.ok) throw new Error(result.message || 'Failed to submit event details.');
+            if (!submitResponse.ok) throw new Error(result.message);
 
             setMessage({ type: 'success', text: 'Event submitted successfully! It is now pending approval.' });
             setFormState(initialFormState);
@@ -123,10 +111,86 @@ export default function TicketFormPage() {
         }
     };
 
-    // The rest of your JSX form goes here...
     return (
-        <form id="event-submission-form" onSubmit={handleSubmit}>
-            {/* Remember to fill in all your form inputs here */}
-        </form>
+        <>
+            <h1 className="page-title">Ticket Your Event</h1>
+            <p className="form-description">Fill out the form below to get your event listed.</p>
+            <div className="form-container glass">
+                <form id="event-submission-form" onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label htmlFor="firstName">First Name</label>
+                        <input type="text" id="firstName" name="firstName" required value={formState.firstName} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="lastName">Last Name</label>
+                        <input type="text" id="lastName" name="lastName" required value={formState.lastName} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="businessName">Business Name</label>
+                        <input type="text" id="businessName" name="businessName" value={formState.businessName} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="eventName">Event Name</label>
+                        <input type="text" id="eventName" name="eventName" required value={formState.eventName} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="eventDate">Event Date</label>
+                        <input type="date" id="eventDate" name="eventDate" required value={formState.eventDate} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="eventLocation">Event Location / Venue</label>
+                        <input type="text" id="eventLocation" name="eventLocation" placeholder="e.g., Grand Park" required value={formState.eventLocation} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="eventTime">Event Time</label>
+                        <input type="time" id="eventTime" name="eventTime" required value={formState.eventTime} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="phone">Telephone Contact</label>
+                        <input type="tel" id="phone" name="phone" placeholder="(123) 456-7890" value={formState.phone} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="ticketCount">Total Number of Tickets to Sell</label>
+                        <input type="number" id="ticketCount" name="ticketCount" min="0" required value={formState.ticketCount} onChange={handleInputChange} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="eventDescription">Event Description</label>
+                        <textarea id="eventDescription" name="eventDescription" rows="4" placeholder="Describe your event..." required value={formState.eventDescription} onChange={handleInputChange}></textarea>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Define Ticket Types & Pricing</label>
+                        <div id="ticket-types-wrapper">
+                            {formState.ticketTypes.map((ticket, index) => (
+                                <div key={index} className="ticket-type-entry">
+                                    <input type="text" className="ticket-label" name="type" placeholder="e.g., General Admission" required value={ticket.type} onChange={(e) => handleTicketTypeChange(e, index)} />
+                                    <input type="number" className="ticket-price-input" name="price" placeholder="e.g., 40.00" step="0.01" required value={ticket.price} onChange={(e) => handleTicketTypeChange(e, index)} />
+                                    <textarea className="ticket-inclusions" name="includes" placeholder="What's included?" value={ticket.includes} onChange={(e) => handleTicketTypeChange(e, index)}></textarea>
+                                    <button type="button" className="remove-ticket-btn cta-button" onClick={() => handleRemoveTicketType(index)}>Remove</button>
+                                </div>
+                            ))}
+                        </div>
+                        <button type="button" id="add-ticket-type" className="cta-button" onClick={handleAddTicketType}>Add Another Ticket Type</button>
+                    </div>
+
+                    <div className="form-group">
+                        <label htmlFor="flyer">Event Flyer/Image (JPG, PNG)</label>
+                        <input type="file" id="flyer" name="flyer" accept=".jpg,.jpeg,.png" required onChange={(e) => setFlyer(e.target.files[0])} />
+                    </div>
+
+                    {message && (
+                        <div className={`form-message ${message.type === 'error' ? 'error-msg' : 'info-msg'}`}>
+                            {message.text}
+                        </div>
+                    )}
+
+                    <div className="form-group">
+                        <button type="submit" className="cta-button form-submit-btn" disabled={isLoading}>
+                            {isLoading ? 'Processing...' : 'Submit Event'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </>
     );
 }

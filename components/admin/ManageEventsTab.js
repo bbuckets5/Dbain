@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
 
-// --- A helper function to automatically add the auth token to our requests ---
+// Helper function to automatically add the auth token to our requests
 const authedFetch = async (url, options = {}) => {
     const token = localStorage.getItem('authToken');
     const headers = {
@@ -22,7 +22,6 @@ const authedFetch = async (url, options = {}) => {
     return data;
 };
 
-
 export default function ManageEventsTab() {
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -33,7 +32,6 @@ export default function ManageEventsTab() {
         setLoading(true);
         setError(null);
         try {
-            // Now using our secure helper function
             const data = await authedFetch('/api/submissions');
             setEvents(data);
         } catch (err) {
@@ -49,12 +47,26 @@ export default function ManageEventsTab() {
 
     const handleUpdateStatus = async (eventId, newStatus) => {
         try {
-            const result = await authedFetch(`/api/submissions/${eventId}/status`, {
+            await authedFetch(`/api/submissions/${eventId}/status`, {
                 method: 'PATCH',
                 body: JSON.stringify({ status: newStatus }),
             });
-            alert(`Status updated successfully.`);
+            alert(`Event status updated to ${newStatus}.`);
             fetchEvents(); 
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    };
+
+    const handleFinishEvent = async (eventId, eventName) => {
+        if (!confirm(`Are you sure you want to mark "${eventName}" as finished?`)) return;
+        try {
+            await authedFetch(`/api/admin/events/${eventId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: 'finished' }),
+            });
+            alert(`Event "${eventName}" has been marked as finished.`);
+            fetchEvents();
         } catch (err) {
             alert(`Error: ${err.message}`);
         }
@@ -64,10 +76,21 @@ export default function ManageEventsTab() {
         router.push(`/admin-dashboard/edit-event/${eventId}`);
     };
 
-    const handleDeleteEvent = async (eventId, eventName) => {
-        if (!confirm(`Are you sure you want to permanently delete "${eventName}"? This will also delete all associated tickets and cannot be undone.`)) {
-            return;
+    const handleRefundEvent = async (eventId, eventName) => {
+        if (!confirm(`Are you sure you want to refund all tickets for "${eventName}"? This action cannot be undone.`)) return;
+        try {
+            const result = await authedFetch(`/api/refunds/event/${eventId}`, {
+                method: 'POST',
+            });
+            alert(result.message);
+            fetchEvents();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
         }
+    };
+    
+    const handleDeleteEvent = async (eventId, eventName) => {
+        if (!confirm(`Are you sure you want to PERMANENTLY DELETE "${eventName}"? This will also delete all tickets sold and cannot be undone.`)) return;
         try {
             const result = await authedFetch(`/api/admin/events/${eventId}`, {
                 method: 'DELETE',
@@ -79,10 +102,6 @@ export default function ManageEventsTab() {
         }
     };
 
-    // The other functions can be filled out similarly
-    const handleFinishEvent = async (eventId, eventName) => { /* Similar to above */ };
-    const handleRefundEvent = async (eventId, eventName) => { /* Similar to above */ };
-
     if (loading) return <p>Loading events...</p>;
     if (error) return <p className="error-msg">{error}</p>;
 
@@ -91,20 +110,52 @@ export default function ManageEventsTab() {
             {events.length === 0 ? (
                 <p>No event submissions found.</p>
             ) : (
-                events.map(event => (
-                    <div key={event._id} className="submission-card glass">
-                        <h4>{event.eventName}</h4>
-                        <p><strong>Status:</strong> <span className={`status-indicator status-${event.status}`}>{event.status}</span></p>
-                        {/* Other event details... */}
-                        <div className="submission-actions">
-                            <button onClick={() => handleEdit(event._id)} className="cta-button edit-btn">Edit</button>
-                            {event.status === 'pending' && (
-                                <button onClick={() => handleUpdateStatus(event._id, 'approved')} className="cta-button approve-btn">Approve</button>
-                            )}
-                            <button onClick={() => handleDeleteEvent(event._id, event.eventName)} className="cta-button is-destructive">Delete</button>
+                events.map(event => {
+                    const dropdownActions = [];
+                    if (event.status === 'pending') {
+                        dropdownActions.push({
+                            label: 'Deny',
+                            onClick: () => handleUpdateStatus(event._id, 'denied'),
+                            className: 'is-destructive' 
+                        });
+                    }
+                    if (event.status === 'approved' && event.ticketsSold > 0) {
+                        dropdownActions.push({
+                            label: 'Refund All Tickets',
+                            onClick: () => handleRefundEvent(event._id, event.eventName),
+                            className: 'is-destructive'
+                        });
+                    }
+                    dropdownActions.push({
+                        label: 'Delete Permanently',
+                        onClick: () => handleDeleteEvent(event._id, event.eventName),
+                        className: 'is-destructive'
+                    });
+
+                    return (
+                        <div key={event._id} className="submission-card glass">
+                            <h4>{event.eventName}</h4>
+                            <p><strong>Submitter:</strong> {event.firstName} {event.lastName}</p>
+                            <p><strong>Date:</strong> {new Date(event.eventDate).toLocaleDateString()}</p>
+                            <p><strong>Tickets Sold:</strong> {event.ticketsSold} / {event.ticketCount}</p>
+                            <p><strong>Status:</strong> <span className={`status-indicator status-${event.status}`}>{event.status}</span></p>
+                            
+                            <div className="submission-actions">
+                                <button onClick={() => handleEdit(event._id)} className="cta-button edit-btn">Edit</button>
+
+                                {event.status === 'pending' && (
+                                    <button onClick={() => handleUpdateStatus(event._id, 'approved')} className="cta-button approve-btn">Approve</button>
+                                )}
+                                
+                                {event.status === 'approved' && (
+                                    <button onClick={() => handleFinishEvent(event._id, event.eventName)} className="cta-button">Finish Event</button>
+                                )}
+
+                                <ActionsDropdown actions={dropdownActions} />
+                            </div>
                         </div>
-                    </div>
-                ))
+                    );
+                })
             )}
         </div>
     );
