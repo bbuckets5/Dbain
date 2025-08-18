@@ -2,16 +2,25 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Cleave from 'cleave.js/react'; // For phone number formatting
 
 const initialFormState = {
-    firstName: '', lastName: '', businessName: '', eventName: '',
-    eventDate: '', eventLocation: '', eventTime: '', phone: '',
-    ticketCount: '', eventDescription: '',
+    firstName: '',
+    lastName: '',
+    businessName: '',
+    submitterEmail: '', // New field for submitter's email
+    eventName: '',
+    eventDate: '',
+    eventLocation: '',
+    eventTime: '',
+    phone: '',
+    ticketCount: '',
+    eventDescription: '',
     ticketTypes: [{ type: '', price: '', includes: '' }],
 };
 
 export default function TicketFormPage() {
-    const [formState, setFormState] =  useState(initialFormState);
+    const [formState, setFormState] = useState(initialFormState);
     const [flyer, setFlyer] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState(null);
@@ -129,6 +138,11 @@ export default function TicketFormPage() {
                         <label htmlFor="businessName">Business Name</label>
                         <input type="text" id="businessName" name="businessName" value={formState.businessName} onChange={handleInputChange} />
                     </div>
+                    {/* --- NEW EMAIL INPUT ADDED HERE --- */}
+                    <div className="form-group">
+                        <label htmlFor="submitterEmail">Your Email Address (for notifications)</label>
+                        <input type="email" id="submitterEmail" name="submitterEmail" required value={formState.submitterEmail} onChange={handleInputChange} />
+                    </div>
                     <div className="form-group">
                         <label htmlFor="eventName">Event Name</label>
                         <input type="text" id="eventName" name="eventName" required value={formState.eventName} onChange={handleInputChange} />
@@ -145,9 +159,18 @@ export default function TicketFormPage() {
                         <label htmlFor="eventTime">Event Time</label>
                         <input type="time" id="eventTime" name="eventTime" required value={formState.eventTime} onChange={handleInputChange} />
                     </div>
+                    {/* --- PHONE INPUT UPDATED HERE --- */}
                     <div className="form-group">
                         <label htmlFor="phone">Telephone Contact</label>
-                        <input type="tel" id="phone" name="phone" placeholder="(123) 456-7890" value={formState.phone} onChange={handleInputChange} />
+                        <Cleave 
+                            id="phone" 
+                            name="phone" 
+                            value={formState.phone} 
+                            onChange={handleInputChange} 
+                            options={{ phone: true, phoneRegionCode: 'US' }} 
+                            placeholder="(123) 456-7890"
+                            className="your-input-class-name" // Add your CSS class for styling
+                        />
                     </div>
                     <div className="form-group">
                         <label htmlFor="ticketCount">Total Number of Tickets to Sell</label>
@@ -157,7 +180,6 @@ export default function TicketFormPage() {
                         <label htmlFor="eventDescription">Event Description</label>
                         <textarea id="eventDescription" name="eventDescription" rows="4" placeholder="Describe your event..." required value={formState.eventDescription} onChange={handleInputChange}></textarea>
                     </div>
-
                     <div className="form-group">
                         <label>Define Ticket Types & Pricing</label>
                         <div id="ticket-types-wrapper">
@@ -172,18 +194,15 @@ export default function TicketFormPage() {
                         </div>
                         <button type="button" id="add-ticket-type" className="cta-button" onClick={handleAddTicketType}>Add Another Ticket Type</button>
                     </div>
-
                     <div className="form-group">
                         <label htmlFor="flyer">Event Flyer/Image (JPG, PNG)</label>
                         <input type="file" id="flyer" name="flyer" accept=".jpg,.jpeg,.png" required onChange={(e) => setFlyer(e.target.files[0])} />
                     </div>
-
                     {message && (
                         <div className={`form-message ${message.type === 'error' ? 'error-msg' : 'info-msg'}`}>
                             {message.text}
                         </div>
                     )}
-
                     <div className="form-group">
                         <button type="submit" className="cta-button form-submit-btn" disabled={isLoading}>
                             {isLoading ? 'Processing...' : 'Submit Event'}
