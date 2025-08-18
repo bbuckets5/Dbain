@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
-import { format, zonedTimeToUtc } from 'date-fns-tz'; // Import the new time zone tools
+import { format } from 'date-fns-tz';
+import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc'; // Import the new time zone tools
 
 // Helper function to automatically add the auth token to our requests
 const authedFetch = async (url, options = {}) => {

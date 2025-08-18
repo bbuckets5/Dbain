@@ -2,7 +2,8 @@ import Link from 'next/link';
 import Image from 'next/image'; // Import the Next.js Image component
 import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
-import { format, zonedTimeToUtc } from 'date-fns-tz'; // Import our new time zone tools
+import { format } from 'date-fns-tz';
+import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc'; // Import our new time zone tools
 
 export default async function HomePage() {
     await dbConnect();

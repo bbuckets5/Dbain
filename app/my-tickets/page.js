@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { useUser } from '@/components/UserContext';
-import { format, zonedTimeToUtc } from 'date-fns-tz';
+import { format } from 'date-fns-tz';
+import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc';
 
 export default function MyTicketsPage() {
     const { user, loading: userLoading } = useUser();

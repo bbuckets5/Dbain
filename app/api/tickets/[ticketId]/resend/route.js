@@ -5,7 +5,8 @@ import Ticket from '@/models/Ticket';
 import Event from '@/models/Event'; // Import Event for populating
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
-import { format, zonedTimeToUtc } from 'date-fns-tz'; // 1. Import our new time zone tools
+import { format } from 'date-fns-tz';
+import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc'; // 1. Import our new time zone tools
 
 export async function POST(request, { params }) {
     await dbConnect();
