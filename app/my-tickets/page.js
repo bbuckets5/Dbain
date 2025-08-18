@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { useUser } from '@/components/UserContext';
-// --- THIS IS THE FIX ---
-// Both functions should be imported from the main library on a single line.
-import { format, zonedTimeToUtc } from 'date-fns-tz';
+// --- THE FIX: Use the correct 'toDate' function from the main library ---
+import { format, toDate } from 'date-fns-tz';
 
 export default function MyTicketsPage() {
     const { user, loading: userLoading } = useUser();
@@ -43,9 +42,10 @@ export default function MyTicketsPage() {
 
                 validTickets.forEach(ticket => {
                     const eventDateString = `${ticket.eventId.eventDate.substring(0, 10)}T${ticket.eventId.eventTime}`;
-                    const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
+                    // Use the correct 'toDate' function for reliable sorting
+                    const eventDateObj = toDate(eventDateString, { timeZone });
                     
-                    if (eventStartUTC > now) {
+                    if (eventDateObj > now) {
                         upcoming.push(ticket);
                     } else {
                         past.push(ticket);
@@ -78,9 +78,10 @@ export default function MyTicketsPage() {
         
         const timeZone = 'America/New_York';
         const eventDateString = `${eventId.eventDate.substring(0, 10)}T${eventId.eventTime}`;
-        const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
-        const formattedDate = format(eventStartUTC, 'M/d/yy', { timeZone });
-        const formattedTime = format(eventStartUTC, 'h:mm a', { timeZone });
+        // Use the correct 'toDate' function for reliable display
+        const eventDateObj = toDate(eventDateString, { timeZone });
+        const formattedDate = format(eventDateObj, 'M/d/yy', { timeZone });
+        const formattedTime = format(eventDateObj, 'h:mm a', { timeZone });
 
         return (
             <div className="ticket-item glass">

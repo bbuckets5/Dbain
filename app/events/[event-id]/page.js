@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import TicketManager from '@/components/TicketManager';
+// --- THE FIX: Use the correct 'toDate' function ---
+import { format, toDate } from 'date-fns-tz';
 
 export default function EventDetailsPage({ params }) {
     const eventId = params['event-id'];
@@ -40,36 +42,25 @@ export default function EventDetailsPage({ params }) {
         return (
             <main className="main-content">
                 <h1>Event Not Found</h1>
-                {/* --- THIS IS THE FIX --- */}
                 <p>Sorry, we couldn&apos;t find the event you were looking for, or it is not currently available.</p>
                 <Link href="/" className="cta-button">Back to Events</Link>
             </main>
         );
     }
     
-    const datePart = event.eventDate.substring(0, 10);
-    const timePart = event.eventTime;
-    const eventLocalTimeString = `${datePart}T${timePart}`;
-    const eventStartDateTime = new Date(eventLocalTimeString);
-    const now = new Date();
-    const eventHasStarted = now > eventStartDateTime;
+    // --- THIS ENTIRE BLOCK IS REPLACED WITH THE NEW, RELIABLE TIME LOGIC ---
+    const timeZone = 'America/New_York';
+    const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
+    // Use the correct 'toDate' function to get a reliable Date object
+    const eventDateObj = toDate(eventDateString, { timeZone });
 
+    // This comparison is now 100% accurate
+    const eventHasStarted = new Date() > eventDateObj;
     const isSoldOut = event.ticketsSold >= event.ticketCount;
     
-    const formattedDate = new Date(event.eventDate).toLocaleDateString('en-US', {
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        timeZone: 'UTC' 
-    });
-    
-    const formattedTime = new Date(`1970-01-01T${event.eventTime}Z`).toLocaleTimeString('en-US', {
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true,
-        timeZone: 'UTC'
-    });
+    // Format the reliable Date object for display
+    const formattedDate = format(eventDateObj, 'EEEE, MMMM d, yyyy', { timeZone });
+    const formattedTime = format(eventDateObj, 'h:mm a', { timeZone });
 
     return (
         <main className="main-content">

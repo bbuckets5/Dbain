@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
-// --- THIS IS THE FIX ---
-// Both functions should be imported from the main library on a single line.
-import { format, zonedTimeToUtc } from 'date-fns-tz';
+// --- THE FIX: Use the correct 'toDate' function from the main library ---
+import { format, toDate } from 'date-fns-tz';
 
 // Helper function to automatically add the auth token to our requests
 const authedFetch = async (url, options = {}) => {
@@ -119,8 +118,9 @@ export default function ManageEventsTab() {
                 events.map(event => {
                     const timeZone = 'America/New_York';
                     const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
-                    const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
-                    const formattedDate = format(eventStartUTC, 'P', { timeZone });
+                    // Use the correct 'toDate' function for reliable display
+                    const eventDateObj = toDate(eventDateString, { timeZone });
+                    const formattedDate = format(eventDateObj, 'P', { timeZone });
 
                     const dropdownActions = [];
                     if (event.status === 'pending') {

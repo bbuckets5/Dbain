@@ -5,9 +5,8 @@ import Ticket from '@/models/Ticket';
 import Event from '@/models/Event';
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
-// --- THIS IS THE FIX ---
-// Both functions should be imported from the main library on a single line.
-import { format, zonedTimeToUtc } from 'date-fns-tz';
+// --- THE FIX: Use the correct 'toDate' function from the main library ---
+import { format, toDate } from 'date-fns-tz';
 
 export async function POST(request, { params }) {
     await dbConnect();
@@ -29,10 +28,12 @@ export async function POST(request, { params }) {
 
         const timeZone = 'America/New_York';
         const eventDateString = `${ticket.eventId.eventDate.toISOString().substring(0, 10)}T${ticket.eventId.eventTime}`;
-        const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
+        // Use the correct 'toDate' function for a reliable Date object
+        const eventDateObj = toDate(eventDateString, { timeZone });
         
-        const formattedDate = format(eventStartUTC, 'EEEE, MMMM d, yyyy', { timeZone });
-        const formattedTime = format(eventStartUTC, 'h:mm a', { timeZone });
+        // Format the reliable Date object for display in the email
+        const formattedDate = format(eventDateObj, 'EEEE, MMMM d, yyyy', { timeZone });
+        const formattedTime = format(eventDateObj, 'h:mm a', { timeZone });
         
         const qrCodeDataUrl = await qrcode.toDataURL(ticket._id.toString(), { width: 150, margin: 2 });
 
