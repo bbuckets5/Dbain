@@ -1,27 +1,22 @@
 import Link from 'next/link';
-import Image from 'next/image'; // Import the Next.js Image component
+import Image from 'next/image';
 import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
-import { format } from 'date-fns-tz';
-import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc'; // Import our new time zone tools
+// --- THIS IS THE FIX ---
+// Both functions should be imported from the main library on a single line.
+import { format, zonedTimeToUtc } from 'date-fns-tz';
 
 export default async function HomePage() {
     await dbConnect();
     
-    // --- NEW TIME-ZONE-AWARE LOGIC ---
-    const timeZone = 'America/New_York'; // Set our target time zone
-
-    // 1. Get the start of today in the target time zone to correctly filter past events.
+    const timeZone = 'America/New_York';
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
     const day = now.getDate();
-    // This creates a date object representing midnight in the server's local time,
-    // then zonedTimeToUtc correctly interprets it as midnight Eastern Time.
     const startOfTodayET = new Date(year, month, day); 
     const startOfTodayUTC = zonedTimeToUtc(startOfTodayET, timeZone);
 
-    // 2. Find only approved events that are happening on or after the start of today.
     const events = await Event.find({ 
         status: 'approved',
         eventDate: { $gte: startOfTodayUTC }
@@ -35,7 +30,6 @@ export default async function HomePage() {
                     <p>No upcoming events at the moment.</p>
                 ) : (
                     events.map(event => {
-                        // --- NEW DATE/TIME FORMATTING ---
                         const eventDateString = `${event.eventDate.toISOString().substring(0, 10)}T${event.eventTime}`;
                         const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
                         const displayDate = format(eventStartUTC, 'M/d/yy', { timeZone });
@@ -44,13 +38,12 @@ export default async function HomePage() {
                         return (
                             <Link href={`/events/${event._id}`} key={event._id} className="event-link">
                                 <div className="event-card glass">
-                                    {/* --- UPGRADED IMAGE COMPONENT --- */}
                                     <Image 
                                         src={event.flyerImageThumbnailPath || 'https://placehold.co/600x400/2c5364/ffffff?text=No+Image'} 
                                         alt={`${event.eventName} Flyer`} 
                                         className="event-image"
-                                        width={600} // Required for Next.js Image
-                                        height={400} // Required for Next.js Image
+                                        width={600}
+                                        height={400}
                                     />
                                     <h3>{event.eventName}</h3>
                                     <p>
@@ -78,3 +71,4 @@ export default async function HomePage() {
         </main>
     );
 }
+// --- END OF THE FIX ---

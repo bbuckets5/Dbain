@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { useUser } from '@/components/UserContext';
-import { format } from 'date-fns-tz';
-import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc';
+// --- THIS IS THE FIX ---
+// Both functions should be imported from the main library on a single line.
+import { format, zonedTimeToUtc } from 'date-fns-tz';
 
 export default function MyTicketsPage() {
     const { user, loading: userLoading } = useUser();
@@ -17,16 +18,13 @@ export default function MyTicketsPage() {
 
     useEffect(() => {
         const fetchTickets = async () => {
-            // Wait for user to be loaded from context
             if (userLoading) return;
-            // If there's no user, no need to fetch
             if (!user) {
                 setLoading(false);
                 return;
             }
 
             try {
-                // --- FIX 1: Add the Authorization header ---
                 const token = localStorage.getItem('authToken');
                 const response = await fetch('/api/users/tickets', {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -38,7 +36,6 @@ export default function MyTicketsPage() {
                 const tickets = await response.json();
                 const validTickets = tickets.filter(ticket => ticket.eventId);
 
-                // --- FIX 2: Use the new time zone library for sorting ---
                 const timeZone = 'America/New_York';
                 const now = new Date();
                 const upcoming = [];
@@ -64,7 +61,7 @@ export default function MyTicketsPage() {
             }
         };
         fetchTickets();
-    }, [user, userLoading]); // Rerun when user is loaded
+    }, [user, userLoading]);
 
     const generateQrCode = async (ticketId) => {
         try {
@@ -79,7 +76,6 @@ export default function MyTicketsPage() {
     const TicketItem = ({ ticket }) => {
         const { eventId, ticketType, _id } = ticket;
         
-        // --- FIX 3: Use the new time zone library for display ---
         const timeZone = 'America/New_York';
         const eventDateString = `${eventId.eventDate.substring(0, 10)}T${eventId.eventTime}`;
         const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
@@ -111,20 +107,43 @@ export default function MyTicketsPage() {
 
     return (
         <main className="container">
-            {/* ... The rest of your JSX for tabs and the modal is perfect and remains unchanged ... */}
             <h1 className="page-title">My Tickets</h1>
             <div className="tabs-nav">
-                {/* Tabs for Upcoming/Past */}
+                 <button 
+                    className={`tab-btn ${activeTab === 'upcoming' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('upcoming')}
+                >
+                    Upcoming
+                </button>
+                <button 
+                    className={`tab-btn ${activeTab === 'past' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('past')}
+                >
+                    Past
+                </button>
             </div>
+
             {visibleQrCode && (
                 <div className="modal-overlay" onClick={() => setVisibleQrCode(null)}>
-                    {/* QR Code Modal */}
+                    <div className="modal-content glass" onClick={(e) => e.stopPropagation()}>
+                        <img src={visibleQrCode} alt="Ticket QR Code" />
+                        <button className="cta-button" onClick={() => setVisibleQrCode(null)}>Close</button>
+                    </div>
                 </div>
             )}
+
             <div className="tickets-list">
-                {/* Ticket list rendering */}
+                {activeTab === 'upcoming' && (
+                    upcomingTickets.length > 0
+                        ? upcomingTickets.map(ticket => <TicketItem key={ticket._id} ticket={ticket} />)
+                        : <p>You have no upcoming tickets.</p>
+                )}
+                {activeTab === 'past' && (
+                    pastTickets.length > 0
+                        ? pastTickets.map(ticket => <TicketItem key={ticket._id} ticket={ticket} />)
+                        : <p>You have no past tickets.</p>
+                )}
             </div>
         </main>
     );
 }
-

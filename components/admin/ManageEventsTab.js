@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
-import { format } from 'date-fns-tz';
-import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc'; // Import the new time zone tools
+// --- THIS IS THE FIX ---
+// Both functions should be imported from the main library on a single line.
+import { format, zonedTimeToUtc } from 'date-fns-tz';
 
 // Helper function to automatically add the auth token to our requests
 const authedFetch = async (url, options = {}) => {
@@ -16,13 +17,10 @@ const authedFetch = async (url, options = {}) => {
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    // This helper was slightly improved to handle pre-stringified bodies
     if (options.body && typeof options.body !== 'string') {
         options.body = JSON.stringify(options.body);
     }
-    
     const response = await fetch(url, { ...options, headers });
-    
     const data = await response.json();
     if (!response.ok) {
         throw new Error(data.message || 'An API error occurred.');
@@ -119,12 +117,10 @@ export default function ManageEventsTab() {
                 <p>No event submissions found.</p>
             ) : (
                 events.map(event => {
-                    // --- THIS IS THE FIX ---
-                    // We now format the date reliably using our new library.
                     const timeZone = 'America/New_York';
                     const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
                     const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
-                    const formattedDate = format(eventStartUTC, 'P', { timeZone }); // 'P' is a shortcut for a standard date format like 08/18/2025
+                    const formattedDate = format(eventStartUTC, 'P', { timeZone });
 
                     const dropdownActions = [];
                     if (event.status === 'pending') {

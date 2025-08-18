@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
 import { requireAdmin } from '@/lib/auth';
 import Ticket from '@/models/Ticket';
-import Event from '@/models/Event'; // Import Event for populating
+import Event from '@/models/Event';
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
-import { format } from 'date-fns-tz';
-import { zonedTimeToUtc } from 'date-fns-tz/zonedTimeToUtc'; // 1. Import our new time zone tools
+// --- THIS IS THE FIX ---
+// Both functions should be imported from the main library on a single line.
+import { format, zonedTimeToUtc } from 'date-fns-tz';
 
 export async function POST(request, { params }) {
     await dbConnect();
@@ -26,8 +27,6 @@ export async function POST(request, { params }) {
             return NextResponse.json({ message: 'Recipient email could not be found for this ticket.' }, { status: 400 });
         }
 
-        // --- 2. THIS IS THE FIX ---
-        // We now format the date and time reliably using our new library.
         const timeZone = 'America/New_York';
         const eventDateString = `${ticket.eventId.eventDate.toISOString().substring(0, 10)}T${ticket.eventId.eventTime}`;
         const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
