@@ -1,49 +1,47 @@
-// app/api/users/[id]/role/route.js
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
 import dbConnect from '@/lib/dbConnect';
 import User from '@/models/User';
+import { requireAdmin } from '@/lib/auth';
 
-export async function PATCH(request, context) {
-  try {
+export async function PATCH(request, { params }) {
     await dbConnect();
 
-    // Auth: only admins can change roles
-    const cookieStore = await cookies();
-    const token = cookieStore.get('authToken')?.value;
-    if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-
-    let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
-      return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+        // 1. Use our standard helper to get the verified admin making the request.
+        const adminUser = await requireAdmin();
+
+        const { id: userIdToUpdate } = params; // The ID of the user whose role is being changed
+        const { role: newRole } = await request.json();
+
+        // 2. Add a critical safety check to prevent an admin from changing their own role.
+        if (adminUser._id.toString() === userIdToUpdate) {
+            return NextResponse.json({ message: "Forbidden: Admins cannot change their own role." }, { status: 403 });
+        }
+
+        // 3. Validate the new role to ensure it's either 'user' or 'admin'.
+        if (!['user', 'admin'].includes(newRole)) {
+            return NextResponse.json({ message: 'Invalid role provided.' }, { status: 400 });
+        }
+
+        // 4. Find and update the user in a single, efficient step.
+        // The { new: true } option tells the database to return the updated user document.
+        const updatedUser = await User.findByIdAndUpdate(
+            userIdToUpdate, 
+            { role: newRole }, 
+            { new: true, runValidators: true }
+        ).select('-password'); // Exclude the password from the returned object
+
+        if (!updatedUser) {
+            return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+        }
+
+        return NextResponse.json(updatedUser, { status: 200 });
+
+    } catch (error) {
+        console.error("Role update error:", error.message);
+        if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
+            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 403 });
+        }
+        return NextResponse.json({ message: 'Server error during role update.' }, { status: 500 });
     }
-
-    const adminUser = await User.findById(decoded.userId);
-    if (!adminUser || adminUser.role !== 'admin') {
-      return NextResponse.json({ message: 'Forbidden: Admins only.' }, { status: 403 });
-    }
-
-    // ✅ Next 15: await the params object, then read id
-    const { id: userId } = await context.params;
-
-    const { role } = await request.json();
-    const allowed = ['user', 'admin'];
-    if (!allowed.includes(role)) {
-      return NextResponse.json({ message: 'Invalid role.' }, { status: 400 });
-    }
-
-    await User.findByIdAndUpdate(userId, { role }, { runValidators: true });
-
-    // Return a safe, plain object
-    const safeUser = await User.findById(userId).select('-password').lean();
-    if (!safeUser) return NextResponse.json({ message: 'User not found.' }, { status: 404 });
-
-    return NextResponse.json(safeUser, { status: 200 });
-  } catch (err) {
-    console.error('Role update error:', err);
-    return NextResponse.json({ message: 'Server error during role update.' }, { status: 500 });
-  }
 }

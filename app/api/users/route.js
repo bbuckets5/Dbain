@@ -1,56 +1,59 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
 import User from '@/models/User';
-import { cookies } from 'next/headers';
-import jwt from 'jsonwebtoken';
+import { requireAdmin } from '@/lib/auth';
 
 export async function GET(request) {
     await dbConnect();
 
     try {
-        // --- Admin Authentication ---
-        const cookieStore = await cookies();
-        const token = cookieStore.get('authToken')?.value;
-        if (!token) throw new Error('Unauthorized');
-        
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const adminUser = await User.findById(decoded.userId).lean();
-        if (!adminUser || adminUser.role !== 'admin') throw new Error('Forbidden: Admins only.');
-        // --- End Authentication ---
+        // 1. Standard admin security check
+        await requireAdmin();
 
-        // Get the search term from the URL query parameters
         const { searchParams } = new URL(request.url);
         const searchTerm = searchParams.get('search');
+        const page = parseInt(searchParams.get('page')) || 1;
+        const limit = parseInt(searchParams.get('limit')) || 25; // Default to 25 users per page
+        const skip = (page - 1) * limit;
 
-        // If there's no search term, return an empty array.
-        // This is the key change to prevent loading all users.
-        if (!searchTerm) {
-            return NextResponse.json([], { status: 200 });
+        // 2. Build the database query
+        let query = {};
+        if (searchTerm) {
+            const searchRegex = new RegExp(searchTerm, 'i');
+            query = {
+                $or: [
+                    { firstName: searchRegex },
+                    { lastName: searchRegex },
+                    { email: searchRegex }
+                ]
+            };
         }
+        
+        // 3. Get the total count of users matching the query for pagination
+        const totalUsers = await User.countDocuments(query);
+        const totalPages = Math.ceil(totalUsers / limit);
 
-        // Create a case-insensitive regular expression for searching
-        const searchRegex = new RegExp(searchTerm, 'i');
-        
-        // Build the query to search across multiple fields
-        const query = {
-            $or: [
-                { firstName: searchRegex },
-                { lastName: searchRegex },
-                { email: searchRegex }
-            ]
-        };
-        
-        // Find users matching the query, remove the password field, and sort by last name
+        // 4. Find the users for the current page
         const users = await User.find(query)
-            .select('-password') // Exclude password from the result
+            .select('-password')
             .sort({ lastName: 1 })
+            .skip(skip)
+            .limit(limit)
             .lean();
 
-        return NextResponse.json(users, { status: 200 });
+        // 5. Return users and pagination info
+        return NextResponse.json({ 
+            users,
+            currentPage: page,
+            totalPages,
+            totalUsers
+        }, { status: 200 });
 
     } catch (error) {
-        console.error("Error fetching users:", error);
-        const status = error.message === 'Unauthorized' ? 401 : error.message === 'Forbidden: Admins only.' ? 403 : 500;
-        return NextResponse.json({ message: error.message || "Failed to fetch users." }, { status });
+        console.error("Error fetching users:", error.message);
+        if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
+            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 403 });
+        }
+        return NextResponse.json({ message: "Server Error: Failed to fetch users." }, { status: 500 });
     }
 }

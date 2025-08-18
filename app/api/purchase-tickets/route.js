@@ -1,14 +1,11 @@
-// In app/api/purchase-tickets/route.js
-
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/dbConnect';
 import Event from '@/models/Event';
 import Ticket from '@/models/Ticket';
-import User from '@/models/User';
+import { getOptionalAuth } from '@/lib/auth';
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
-import jwt from 'jsonwebtoken';
 
 function formatTimeServer(timeString) {
     if (!timeString) return '';
@@ -25,119 +22,100 @@ export async function POST(request) {
     session.startTransaction();
 
     try {
-        const body = await request.json();
-        const { purchases, customerInfo } = body;
+        // --- 1. Check for optional authentication ---
+        const auth = getOptionalAuth();
+        const userId = auth ? auth.userId : null;
 
-        if (!purchases || !customerInfo || purchases.length === 0) {
-            throw new Error('Missing purchase or customer information.');
+        const { purchases, customerInfo } = await request.json();
+
+        // Basic validation
+        if (!purchases || !customerInfo || !customerInfo.email || purchases.length === 0) {
+            throw new Error('Missing or invalid purchase or customer information.');
         }
 
-        let allTicketsForDb = [];
-        let allTicketsForEmail = [];
-
-        const token = request.cookies.get('authToken')?.value;
-        let userId = null;
-        if (token) {
-            try {
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                userId = decoded.userId;
-            } catch (err) {
-                console.warn('Invalid token on purchase, proceeding as guest.');
-            }
-        }
-
+        let createdTickets = [];
         for (const purchaseItem of purchases) {
             const event = await Event.findById(purchaseItem.eventId).session(session);
             
             if (!event || event.status !== 'approved') {
-                throw new Error(`Event with ID ${purchaseItem.eventId} is not available for purchase.`);
+                throw new Error(`Event "${purchaseItem.eventId}" is not available for purchase.`);
             }
 
-            // --- THIS IS THE CORRECTED LINE ---
-            // This new version safely handles the date whether it's a string or a Date object.
+            // Check if event has started
             const eventStartDateTime = new Date(`${new Date(event.eventDate).toISOString().substring(0, 10)}T${event.eventTime}`);
-            const now = new Date();
-            if (now > eventStartDateTime) {
-                throw new Error(`Ticket sales for "${event.eventName}" have closed because the event has already started.`);
+            if (new Date() > eventStartDateTime) {
+                throw new Error(`Ticket sales for "${event.eventName}" have closed as the event has started.`);
             }
 
-            let totalTicketsRequestedForEvent = 0;
-            for (const ticketRequest of purchaseItem.tickets) {
-                const ticketOption = event.tickets.find(t => t.type === ticketRequest.name);
-                if (!ticketOption) {
-                    throw new Error(`Ticket type "${ticketRequest.name}" not found for event "${event.eventName}".`);
-                }
-                totalTicketsRequestedForEvent += ticketRequest.quantity;
+            // Check inventory
+            const totalTicketsRequested = purchaseItem.tickets.reduce((sum, t) => sum + t.quantity, 0);
+            if (event.ticketsSold + totalTicketsRequested > event.ticketCount) {
+                throw new Error(`Not enough tickets available for "${event.eventName}".`);
             }
-
-            if (event.ticketsSold + totalTicketsRequestedForEvent > event.ticketCount) {
-                throw new Error(`Sorry, not enough tickets available for "${event.eventName}". Purchase blocked.`);
-            }
-
-            event.ticketsSold += totalTicketsRequestedForEvent;
+            event.ticketsSold += totalTicketsRequested;
             await event.save({ session });
 
+            // Prepare ticket documents
             for (const ticketRequest of purchaseItem.tickets) {
                 const ticketOption = event.tickets.find(t => t.type === ticketRequest.name);
+                if (!ticketOption) throw new Error(`Ticket type "${ticketRequest.name}" not found.`);
+                
                 for (let i = 0; i < ticketRequest.quantity; i++) {
-                    allTicketsForDb.push({
+                    createdTickets.push({
                         eventId: event._id,
-                        userId: userId,
+                        userId,
                         ticketType: ticketRequest.name,
                         price: ticketOption.price,
                         customerFirstName: customerInfo.firstName,
                         customerLastName: customerInfo.lastName,
                         customerEmail: customerInfo.email,
                     });
-                    allTicketsForEmail.push({
-                        eventName: event.eventName,
-                        eventDate: event.eventDate,
-                        eventTime: event.eventTime,
-                        ticketType: ticketRequest.name,
-                    });
                 }
             }
         }
-
-        const savedTicketDocs = await Ticket.insertMany(allTicketsForDb, { session });
         
+        const savedTicketDocs = await Ticket.insertMany(createdTickets, { session });
         await session.commitTransaction();
 
+        // --- 2. Send Smarter Emails ---
         const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
         const sender = new Sender(process.env.FROM_EMAIL_ADDRESS, "Click eTickets");
         const recipient = new Recipient(customerInfo.email);
-        
-        let ticketsHtml = '';
-        for (let i = 0; i < savedTicketDocs.length; i++) {
-            const ticketDoc = savedTicketDocs[i];
-            const emailInfo = allTicketsForEmail[i];
-            const qrCodeDataUrl = await qrcode.toDataURL(ticketDoc._id.toString(), { width: 150, margin: 2 });
-            const formattedTime = formatTimeServer(emailInfo.eventTime);
-            const formattedDate = new Date(emailInfo.eventDate).toLocaleDateString();
+        let emailHtmlContent;
+        const firstEventName = (await Event.findById(purchases[0].eventId).lean()).eventName;
 
-            ticketsHtml += `
-                <div style="border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
-                    <p><strong>Event:</strong> ${emailInfo.eventName}</p>
-                    <p><strong>Date:</strong> ${formattedDate} at ${formattedTime}</p>
-                    <p><strong>Ticket Type:</strong> ${emailInfo.ticketType}</p>
-                    <p><strong>Ticket ID:</strong> ${ticketDoc._id}</p>
-                    <img src="${qrCodeDataUrl}" alt="QR Code" style="display: block; margin: 10px auto;">
-                </div>
+        if (userId) { // User is logged in
+            emailHtmlContent = `
+                <h2>Purchase Confirmation</h2>
+                <p>Hello ${customerInfo.firstName}, thank you for your purchase!</p>
+                <p>Your tickets have been added to your account. You can view them at any time in the "My Tickets" section on our website.</p>
+            `;
+        } else { // User is a guest
+            let ticketsHtml = '';
+            for (const ticketDoc of savedTicketDocs) {
+                const event = await Event.findById(ticketDoc.eventId).lean();
+                const qrCodeDataUrl = await qrcode.toDataURL(ticketDoc._id.toString(), { width: 150, margin: 2 });
+                ticketsHtml += `
+                    <div style="border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+                        <p><strong>Event:</strong> ${event.eventName}</p>
+                        <p><strong>Date:</strong> ${new Date(event.eventDate).toLocaleDateString()} at ${formatTimeServer(event.eventTime)}</p>
+                        <p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p>
+                        <img src="${qrCodeDataUrl}" alt="QR Code" style="display: block; margin: 10px auto;">
+                    </div>
+                `;
+            }
+            emailHtmlContent = `
+                <h2>Your Tickets from Click eTickets</h2>
+                <p>Hello ${customerInfo.firstName}, thank you for your purchase! Your QR codes are below:</p>
+                ${ticketsHtml}
             `;
         }
 
-        const emailHtmlContent = `
-            <h2>Your Click eTickets Purchase Confirmation</h2>
-            <p>Hello ${customerInfo.firstName}, thank you for your purchase! Your QR codes are below:</p>
-            ${ticketsHtml}
-            <p>Best regards,<br>The Click eTickets Team</p>
-        `;
-        
         const emailParams = new EmailParams()
             .setFrom(sender)
             .setTo([recipient])
-            .setSubject(`Your Tickets for ${allTicketsForEmail[0].eventName}`)
-            .setHtml(emailHtmlContent);
+            .setSubject(`Your Tickets for ${firstEventName}`)
+            .setHtml(`<div style="font-family: Arial, sans-serif;">${emailHtmlContent}</div>`);
 
         await mailerSend.email.send(emailParams);
 
@@ -151,4 +129,3 @@ export async function POST(request) {
         session.endSession();
     }
 }
-

@@ -1,16 +1,14 @@
-// In models/ticket.js
-
 import mongoose from 'mongoose';
 
 const ticketSchema = new mongoose.Schema({
     eventId: { 
         type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Submission', // Links to the event in the submissions collection
+        ref: 'Event',
         required: true 
     },
     userId: { 
         type: mongoose.Schema.Types.ObjectId, 
-        ref: 'User', // The user who bought the ticket, if they were logged in
+        ref: 'User',
         default: null
     },
     ticketType: { type: String, required: true },
@@ -24,7 +22,15 @@ const ticketSchema = new mongoose.Schema({
         enum: ['active', 'refunded', 'checked-in'], 
         default: 'active' 
     },
+    
+    // ADDED: Fields for check-in records
+    checkedInAt: { type: Date, default: null },
+    checkedInBy: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User', 
+        default: null 
+    },
+
 }, { timestamps: true });
 
-// This line prevents errors in development by reusing the existing model
 export default mongoose.models.Ticket || mongoose.model('Ticket', ticketSchema);

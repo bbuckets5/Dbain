@@ -1,60 +1,49 @@
 import { NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache'; // 1. Import revalidatePath
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Event from '@/models/Event';
-import jwt from 'jsonwebtoken';
-import { cookies } from 'next/headers';
-import User from '@/models/User';
+import { requireAdmin } from '@/lib/auth';
 
 export async function PATCH(request, { params }) {
-  try {
     await dbConnect();
 
-    // Admin Authentication (remains the same)
-    const cookieStore = await cookies();
-    const token = cookieStore.get('authToken')?.value;
-    if (!token) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
-    let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
-      return NextResponse.json({ message: 'Invalid token.' }, { status: 401 });
+        // 1. Use our standard helper to ensure the user is a verified admin.
+        await requireAdmin();
+
+        const eventId = params.id;
+        const { status } = await request.json();
+
+        // 2. Validate that the status is one of the allowed values.
+        const allowedStatuses = ['approved', 'denied', 'pending']; // Add any other valid statuses here
+        if (!allowedStatuses.includes(status)) {
+            return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
+        }
+
+        // 3. Find the event and update its status.
+        const updatedEvent = await Event.findByIdAndUpdate(
+            eventId,
+            { status },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedEvent) {
+            return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
+        }
+
+        // 4. IMPORTANT: Refresh the cached data for the homepage and the specific event page.
+        // This ensures the site shows the new status immediately. Your idea to do this was excellent.
+        revalidatePath('/'); // For the main events list
+        revalidatePath(`/events/${eventId}`); // For the event's detail page
+
+        return NextResponse.json(updatedEvent, { status: 200 });
+        
+    } catch (error)
+    {
+        console.error('Error updating event status:', error.message);
+        if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
+            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 403 });
+        }
+        return NextResponse.json({ message: 'Server error during status update.' }, { status: 500 });
     }
-    const user = await User.findById(decoded.userId);
-    if (!user || user.role !== 'admin') {
-      return NextResponse.json({ message: 'Forbidden: Admins only.' }, { status: 403 });
-    }
-
-    const eventId = params.id;
-    const { status } = await request.json();
-
-    // Updated to include 'completed' as a valid status from our other feature
-    if (!['approved', 'denied', 'completed'].includes(status)) {
-      return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
-    }
-
-    const updatedEvent = await Event.findByIdAndUpdate(
-      eventId,
-      { status },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedEvent) {
-      return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
-    }
-
-    // 2. Revalidate the homepage after a successful status update
-    revalidatePath('/');
-
-    return NextResponse.json({ 
-        message: `Event "${updatedEvent.eventName}" status updated to ${status}. Homepage is refreshing.`,
-        event: updatedEvent 
-    }, { status: 200 });
-    
-  } catch (error) {
-    console.error('Error updating event status:', error);
-    return NextResponse.json({ message: 'Server error during status update.' }, { status: 500 });
-  }
 }

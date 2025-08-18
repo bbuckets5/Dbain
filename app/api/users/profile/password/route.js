@@ -1,60 +1,57 @@
-// app/api/users/profile/password/route.js
-
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import jwt from 'jsonwebtoken';
-import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
+import dbConnect from '@/lib/dbConnect';
+import { getAuthedUser } from '@/lib/auth';
 import User from '@/models/User';
 
 export async function PATCH(request) {
+    await dbConnect();
+
     try {
-        // 1. Authenticate the user
-        const cookieStore = cookies();
-        const token = cookieStore.get('authToken')?.value;
+        // 1. Get the authenticated user using our central helper.
+        // This handles token verification and finds the user in the database.
+        const user = await getAuthedUser();
 
-        if (!token) {
-            return NextResponse.json({ message: 'Authentication token not found.' }, { status: 401 });
-        }
+        const { currentPassword, newPassword } = await request.json();
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        // 2. Get the passwords from the request body
-        const body = await request.json();
-        const { currentPassword, newPassword } = body;
-
+        // 2. Robust Validation
         if (!currentPassword || !newPassword) {
             return NextResponse.json({ message: 'Current and new passwords are required.' }, { status: 400 });
         }
 
-        // 3. Find the user in the database
-        if (mongoose.connection.readyState !== 1) {
-            await mongoose.connect(process.env.DB_CONNECTION_STRING);
-        }
-        
-        const user = await User.findById(decoded.userId);
-        if (!user) {
-            return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+        // Check if the new password is the same as the old one
+        if (currentPassword === newPassword) {
+            return NextResponse.json({ message: 'New password cannot be the same as the current password.' }, { status: 400 });
         }
 
-        // 4. Verify the current password
+        // Enforce password complexity for the new password
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        if (!passwordRegex.test(newPassword)) {
+            return NextResponse.json({ 
+                message: 'New password must be at least 8 characters long and contain an uppercase letter, a lowercase letter, a number, and a special character.' 
+            }, { status: 400 });
+        }
+
+        // 3. Verify the current password is correct
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
-            return NextResponse.json({ message: 'Incorrect current password.' }, { status: 400 });
+            return NextResponse.json({ message: 'Incorrect current password.' }, { status: 401 });
         }
 
-        // 5. Hash and save the new password
+        // 4. Hash and save the new password
         const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(newPassword, salt);
-        await user.save();
+        // We need to fetch the full user document to save it, not the plain object from getAuthedUser
+        const userToUpdate = await User.findById(user._id);
+        userToUpdate.password = await bcrypt.hash(newPassword, salt);
+        await userToUpdate.save();
 
         return NextResponse.json({ message: 'Password updated successfully.' }, { status: 200 });
 
     } catch (error) {
-        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-             return NextResponse.json({ message: 'Invalid or expired token.' }, { status: 401 });
+        console.error("Change password error:", error.message);
+        if (error.message.includes('Authentication')) {
+            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 401 });
         }
-        console.error("Change password error:", error);
         return NextResponse.json({ message: 'Server error changing password.' }, { status: 500 });
     }
 }

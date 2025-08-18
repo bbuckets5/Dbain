@@ -1,20 +1,23 @@
-// In app/api/events/route.js
-
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/dbConnect';        // 1. Import our dbConnect utility
-import Event from '@/models/Event';            // 2. Import the correct Event model
+import dbConnect from '@/lib/dbConnect';
+import Event from '@/models/Event';
 
 export async function GET(request) {
     try {
-        await dbConnect(); // 3. Use the dbConnect utility
+        await dbConnect();
 
-        // 4. Use the correct Event model and keep your date filter
+        // --- This is the corrected logic ---
+        // Get the current date and set the time to the very beginning (midnight).
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
         const approvedEvents = await Event.find({ 
             status: 'approved',
-            eventDate: { $gte: new Date() }
+            // Now we compare against the start of today, not the exact current time.
+            eventDate: { $gte: startOfToday } 
         })
         .sort({ eventDate: 1 })
-        .lean(); // Add .lean() for better performance
+        .lean();
 
         return NextResponse.json(approvedEvents, { status: 200 });
 

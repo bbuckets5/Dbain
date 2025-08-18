@@ -3,36 +3,30 @@ import cloudinary from 'cloudinary';
 
 // Configure Cloudinary with your credentials from .env.local
 cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export async function GET(request) {
-  try {
-    const timestamp = Math.round(new Date().getTime() / 1000);
+export async function POST(request) {
+    try {
+        const body = await request.json();
+        const { paramsToSign } = body;
 
-    // Create the secure signature
-    const signature = cloudinary.v2.utils.api_sign_request(
-      {
-        timestamp: timestamp,
-        folder: 'event-flyers', // Optional: The folder to upload into
-      },
-      process.env.CLOUDINARY_API_SECRET
-    );
+        // Create the secure signature using the parameters from the frontend
+        const signature = cloudinary.v2.utils.api_sign_request(
+            paramsToSign,
+            process.env.CLOUDINARY_API_SECRET
+        );
 
-    // Return the signature and other necessary info to the front-end
-    return NextResponse.json({
-      signature,
-      timestamp,
-      api_key: process.env.CLOUDINARY_API_KEY,
-    });
+        // Return the signature to the front-end
+        return NextResponse.json({ signature });
 
-  } catch (error) {
-    console.error("Error generating Cloudinary signature:", error);
-    return NextResponse.json(
-      { message: "Failed to generate upload signature." },
-      { status: 500 }
-    );
-  }
+    } catch (error) {
+        console.error("Error generating Cloudinary signature:", error);
+        return NextResponse.json(
+            { message: "Failed to generate upload signature." },
+            { status: 500 }
+        );
+    }
 }

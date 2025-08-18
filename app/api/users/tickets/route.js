@@ -1,43 +1,35 @@
-// In app/api/users/tickets/route.js
-
 import { NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
-// We no longer need to import 'cookies' from next/headers
-import User from '@/models/User';
+import { getAuthedUser } from '@/lib/auth';
 import Ticket from '@/models/Ticket';
-import Event from '@/models/Event';
+import Event from '@/models/Event'; // Required for .populate() to work reliably
 import dbConnect from '@/lib/dbConnect';
 
 export async function GET(request) {
+    await dbConnect();
+
     try {
-        await dbConnect();
+        // 1. Get the authenticated user with our standard helper.
+        const user = await getAuthedUser();
 
-        // --- THIS IS THE FIX ---
-        // Get the token directly from the incoming request's cookies.
-        const token = request.cookies.get('authToken')?.value;
-
-        if (!token) {
-            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        const tickets = await Ticket.find({ userId: decoded.userId })
+        // 2. Find all tickets associated with that user's ID.
+        // Your database query here was already excellent, so we've kept it.
+        const tickets = await Ticket.find({ userId: user._id })
             .populate({
                 path: 'eventId',
                 model: Event,
-                select: 'eventName eventDate eventTime'
+                select: 'eventName eventDate eventTime flyerImagePath' // Added flyer image
             })
-            .sort({ purchaseDate: -1 })
-            .lean();
+            .sort({ purchaseDate: -1 }) // Show newest tickets first
+            .lean(); // .lean() for faster read-only results
 
         return NextResponse.json(tickets, { status: 200 });
 
     } catch (error) {
-        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-            return NextResponse.json({ message: 'Unauthorized: Invalid or expired token.' }, { status: 401 });
+        console.error("Error fetching user tickets:", error.message);
+        if (error.message.includes('Authentication')) {
+            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 401 });
         }
-        console.error("Error fetching user tickets:", error);
+        
         return NextResponse.json({ message: 'Server error fetching tickets.' }, { status: 500 });
     }
 }

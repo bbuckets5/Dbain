@@ -1,42 +1,27 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import jwt from 'jsonwebtoken';
-import { cookies } from 'next/headers';
-import Submission from '@/models/Event';
-import User from '@/models/User';
+import dbConnect from '@/lib/dbConnect';
+import Event from '@/models/Event'; // Using the actual model name 'Event'
+import { requireAdmin } from '@/lib/auth'; // Our standard admin security check
 
 export async function GET(request) {
+    await dbConnect();
+
     try {
-        // This is the only line that changed
-        const cookieStore = await cookies();
-        const token = cookieStore.get('authToken')?.value;
+        // 1. Use our standard helper to ensure the user is an admin.
+        await requireAdmin();
 
-        if (!token) {
-            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        if (mongoose.connection.readyState !== 1) {
-            await mongoose.connect(process.env.DB_CONNECTION_STRING);
-        }
-        
-        const user = await User.findById(decoded.userId);
-        
-        if (!user || user.role !== 'admin') {
-            return NextResponse.json({ message: 'Forbidden: Admins only.' }, { status: 403 });
-        }
-
-        const submissions = await Submission.find({}).sort({ createdAt: -1 });
+        // 2. Find all event documents and sort them by the most recently submitted.
+        const submissions = await Event.find({})
+            .sort({ submittedAt: -1 }); // Sort by the 'submittedAt' field in your schema
 
         return NextResponse.json(submissions, { status: 200 });
 
     } catch (error) {
-        if (error.name === 'JsonWebTokenError') {
-            return NextResponse.json({ message: 'Unauthorized: Invalid token.' }, { status: 401 });
+        console.error("Error fetching submissions:", error.message);
+        if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
+            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 403 });
         }
         
-        console.error("Error fetching submissions:", error);
         return NextResponse.json({ message: 'Server error fetching submissions.' }, { status: 500 });
     }
 }
