@@ -1,5 +1,6 @@
 'use client';
 
+import 'cleave.js/dist/addons/cleave-phone.us';
 import { useState } from 'react';
 import Link from 'next/link';
 import Cleave from 'cleave.js/react'; // For phone number formatting
