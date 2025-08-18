@@ -2,31 +2,18 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
 import { requireAdmin } from '@/lib/auth';
 import Ticket from '@/models/Ticket';
+import Event from '@/models/Event'; // Import Event for populating
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
-
-// Helper function to format time
-function formatTimeServer(timeString) {
-    if (!timeString) return '';
-    const [hour, minute] = timeString.split(':');
-    let hourInt = parseInt(hour, 10);
-    const ampm = hourInt >= 12 ? 'PM' : 'AM';
-    hourInt = hourInt % 12 || 12;
-    return `${hourInt}:${minute} ${ampm}`;
-}
+import { format, zonedTimeToUtc } from 'date-fns-tz'; // 1. Import our new time zone tools
 
 export async function POST(request, { params }) {
     await dbConnect();
 
     try {
-        // 1. Authenticate and authorize the user as an admin.
-        // This function will throw an error if the user is not a valid admin.
         await requireAdmin();
 
         const { ticketId } = params;
-
-        // 2. Find the ticket in the database and populate the event details.
-        // Thanks to our model correction, .populate('eventId') will now work perfectly.
         const ticket = await Ticket.findById(ticketId).populate('eventId');
 
         if (!ticket || !ticket.eventId) {
@@ -38,10 +25,16 @@ export async function POST(request, { params }) {
             return NextResponse.json({ message: 'Recipient email could not be found for this ticket.' }, { status: 400 });
         }
 
-        // 3. Generate a QR Code and the HTML content for the email.
+        // --- 2. THIS IS THE FIX ---
+        // We now format the date and time reliably using our new library.
+        const timeZone = 'America/New_York';
+        const eventDateString = `${ticket.eventId.eventDate.toISOString().substring(0, 10)}T${ticket.eventId.eventTime}`;
+        const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
+        
+        const formattedDate = format(eventStartUTC, 'EEEE, MMMM d, yyyy', { timeZone });
+        const formattedTime = format(eventStartUTC, 'h:mm a', { timeZone });
+        
         const qrCodeDataUrl = await qrcode.toDataURL(ticket._id.toString(), { width: 150, margin: 2 });
-        const formattedTime = formatTimeServer(ticket.eventId.eventTime);
-        const formattedDate = new Date(ticket.eventId.eventDate).toLocaleDateString();
 
         const ticketHtml = `
             <div style="border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
@@ -61,7 +54,6 @@ export async function POST(request, { params }) {
                 <p>Thank you,<br>The Team</p>
             </div>`;
 
-        // 4. Send the email using the MailerSend service.
         const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
         const sender = new Sender(process.env.FROM_EMAIL_ADDRESS, "Click eTickets");
         const recipient = new Recipient(recipientEmail);
@@ -78,11 +70,9 @@ export async function POST(request, { params }) {
 
     } catch (error) {
         console.error("Error resending ticket:", error);
-        // Catch specific authentication/authorization errors from our helper
         if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
             return NextResponse.json({ message: error.message }, { status: 403 });
         }
-        // Catch all other errors
         return NextResponse.json({ message: "Server Error: Failed to resend ticket." }, { status: 500 });
     }
 }

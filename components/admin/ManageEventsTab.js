@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
+import { format, zonedTimeToUtc } from 'date-fns-tz'; // Import the new time zone tools
 
 // Helper function to automatically add the auth token to our requests
 const authedFetch = async (url, options = {}) => {
@@ -14,7 +15,13 @@ const authedFetch = async (url, options = {}) => {
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
+    // This helper was slightly improved to handle pre-stringified bodies
+    if (options.body && typeof options.body !== 'string') {
+        options.body = JSON.stringify(options.body);
+    }
+    
     const response = await fetch(url, { ...options, headers });
+    
     const data = await response.json();
     if (!response.ok) {
         throw new Error(data.message || 'An API error occurred.');
@@ -49,7 +56,7 @@ export default function ManageEventsTab() {
         try {
             await authedFetch(`/api/submissions/${eventId}/status`, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: newStatus }),
+                body: { status: newStatus },
             });
             alert(`Event status updated to ${newStatus}.`);
             fetchEvents(); 
@@ -63,7 +70,7 @@ export default function ManageEventsTab() {
         try {
             await authedFetch(`/api/admin/events/${eventId}`, {
                 method: 'PUT',
-                body: JSON.stringify({ status: 'finished' }),
+                body: { status: 'finished' },
             });
             alert(`Event "${eventName}" has been marked as finished.`);
             fetchEvents();
@@ -111,6 +118,13 @@ export default function ManageEventsTab() {
                 <p>No event submissions found.</p>
             ) : (
                 events.map(event => {
+                    // --- THIS IS THE FIX ---
+                    // We now format the date reliably using our new library.
+                    const timeZone = 'America/New_York';
+                    const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
+                    const eventStartUTC = zonedTimeToUtc(eventDateString, timeZone);
+                    const formattedDate = format(eventStartUTC, 'P', { timeZone }); // 'P' is a shortcut for a standard date format like 08/18/2025
+
                     const dropdownActions = [];
                     if (event.status === 'pending') {
                         dropdownActions.push({
@@ -136,21 +150,18 @@ export default function ManageEventsTab() {
                         <div key={event._id} className="submission-card glass">
                             <h4>{event.eventName}</h4>
                             <p><strong>Submitter:</strong> {event.firstName} {event.lastName}</p>
-                            <p><strong>Date:</strong> {new Date(event.eventDate).toLocaleDateString()}</p>
+                            <p><strong>Date:</strong> {formattedDate}</p>
                             <p><strong>Tickets Sold:</strong> {event.ticketsSold} / {event.ticketCount}</p>
                             <p><strong>Status:</strong> <span className={`status-indicator status-${event.status}`}>{event.status}</span></p>
                             
                             <div className="submission-actions">
                                 <button onClick={() => handleEdit(event._id)} className="cta-button edit-btn">Edit</button>
-
                                 {event.status === 'pending' && (
                                     <button onClick={() => handleUpdateStatus(event._id, 'approved')} className="cta-button approve-btn">Approve</button>
                                 )}
-                                
                                 {event.status === 'approved' && (
                                     <button onClick={() => handleFinishEvent(event._id, event.eventName)} className="cta-button">Finish Event</button>
                                 )}
-
                                 <ActionsDropdown actions={dropdownActions} />
                             </div>
                         </div>
