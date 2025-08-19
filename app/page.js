@@ -27,11 +27,14 @@ export default async function HomePage() {
                     <p>No upcoming events at the moment.</p>
                 ) : (
                     events.map(event => {
-                        // Reliably create a timezone-aware date object for display
-                        const eventDateString = `${event.eventDate.toISOString().substring(0, 10)}T${event.eventTime}`;
+                        // ✅ Build the date string in the target timezone (NOT via toISOString/UTC)
+                        const localDate = format(event.eventDate, 'yyyy-MM-dd', { timeZone });
+                        const eventDateString = `${localDate}T${event.eventTime}`;
+
+                        // Create a timezone-aware Date for display
                         const eventDateObj = toDate(eventDateString, { timeZone });
                         
-                        // Reliably format the date and time
+                        // Format the date and time for the homepage
                         const displayDate = format(eventDateObj, 'M/d/yy', { timeZone });
                         const displayTime = format(eventDateObj, 'h:mm a', { timeZone });
 
