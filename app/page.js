@@ -2,7 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
-import { format, toDate } from 'date-fns-tz';
+import { format, toDate, utcToZonedTime } from 'date-fns-tz';
 import { startOfDay } from 'date-fns';
 
 export default async function HomePage() {
@@ -27,11 +27,12 @@ export default async function HomePage() {
                     <p>No upcoming events at the moment.</p>
                 ) : (
                     events.map(event => {
-                        // ✅ Build the date string in the target timezone (NOT via toISOString/UTC)
-                        const localDate = format(event.eventDate, 'yyyy-MM-dd', { timeZone });
+                        // ✅ FIX: Convert stored UTC date to New York date first
+                        const zonedDay = utcToZonedTime(event.eventDate, timeZone);
+                        const localDate = format(zonedDay, 'yyyy-MM-dd', { timeZone });
                         const eventDateString = `${localDate}T${event.eventTime}`;
 
-                        // Create a timezone-aware Date for display
+                        // Build Date object for formatting
                         const eventDateObj = toDate(eventDateString, { timeZone });
                         
                         // Format the date and time for the homepage
