@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import TicketManager from '@/components/TicketManager';
-// --- THE FIX: Use the correct 'toDate' function ---
 import { format, toDate } from 'date-fns-tz';
 
 export default function EventDetailsPage({ params }) {
@@ -14,8 +13,8 @@ export default function EventDetailsPage({ params }) {
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!eventId) return;
         const fetchEvent = async () => {
-            if (!eventId) return;
             try {
                 const response = await fetch(`/api/events/${eventId}`);
                 if (!response.ok) {
@@ -30,13 +29,10 @@ export default function EventDetailsPage({ params }) {
                 setLoading(false);
             }
         };
-
         fetchEvent();
     }, [eventId]);
 
-    if (loading) {
-        return <main className="main-content"><p>Loading event...</p></main>;
-    }
+    if (loading) return <main className="main-content"><p>Loading event...</p></main>;
 
     if (error || !event) {
         return (
@@ -48,16 +44,10 @@ export default function EventDetailsPage({ params }) {
         );
     }
     
-    // --- Simplified and Correct Time Zone Logic ---
     const timeZone = 'America/New_York';
-
-    // 1. Combine the date and time strings from your database.
     const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
-    
-    // 2. Use 'toDate' to create a reliable, timezone-aware date object.
     const eventDateObj = toDate(eventDateString, { timeZone });
-
-    // 3. Perform all comparisons and formatting with this reliable object.
+    
     const eventHasStarted = new Date() > eventDateObj;
     const isSoldOut = event.ticketsSold >= event.ticketCount;
     const formattedDate = format(eventDateObj, 'EEEE, MMMM d, yyyy', { timeZone });

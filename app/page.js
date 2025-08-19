@@ -10,14 +10,10 @@ export default async function HomePage() {
     
     const timeZone = 'America/New_York';
 
-    // --- RELIABLE DATE FILTERING ---
-    // 1. Get the current moment in time.
-    const now = new Date();
-    // 2. Use the 'startOfDay' helper to get midnight of the current day.
-    // This is the most robust way to find "today" and avoids all errors.
-    const startOfToday = startOfDay(now);
+    // Reliably get the start of today to filter out past events
+    const startOfToday = startOfDay(new Date());
     
-    // 3. Find events where the eventDate is on or after the start of today.
+    // Find events that are approved and happening on or after today
     const events = await Event.find({ 
         status: 'approved',
         eventDate: { $gte: startOfToday }
@@ -31,10 +27,11 @@ export default async function HomePage() {
                     <p>No upcoming events at the moment.</p>
                 ) : (
                     events.map(event => {
-                        // --- RELIABLE DATE AND TIME DISPLAY ---
-                        // Use the correct 'toDate' function to handle time zones.
+                        // Reliably create a timezone-aware date object for display
                         const eventDateString = `${event.eventDate.toISOString().substring(0, 10)}T${event.eventTime}`;
                         const eventDateObj = toDate(eventDateString, { timeZone });
+                        
+                        // Reliably format the date and time
                         const displayDate = format(eventDateObj, 'M/d/yy', { timeZone });
                         const displayTime = format(eventDateObj, 'h:mm a', { timeZone });
 
@@ -47,6 +44,7 @@ export default async function HomePage() {
                                         className="event-image"
                                         width={600}
                                         height={400}
+                                        loading="lazy"
                                     />
                                     <h3>{event.eventName}</h3>
                                     <p>
@@ -62,7 +60,7 @@ export default async function HomePage() {
                                     </p>
                                 </div>
                             </Link>
-                        )
+                        );
                     })
                 )}
             </div>
