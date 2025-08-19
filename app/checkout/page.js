@@ -1,4 +1,3 @@
-// In app/checkout/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -100,9 +99,16 @@ export default function CheckoutPage() {
         };
 
         try {
+            // --- THIS IS THE FIX ---
+            const token = localStorage.getItem('authToken');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
             const response = await fetch('/api/purchase-tickets', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers, // Use the headers object we just created
                 body: JSON.stringify(payload)
             });
 
@@ -117,8 +123,6 @@ export default function CheckoutPage() {
             router.push(redirectUrl);
 
         } catch (err) {
-            // --- THIS IS THE FIX ---
-            // We now show a pop-up alert with the specific error message from the API.
             alert(`Purchase Failed: ${err.message}`);
             setError(err.message);
         } finally {
