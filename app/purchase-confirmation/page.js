@@ -1,4 +1,3 @@
-// In app/purchase-confirmation/page.js
 "use client";
 
 import Link from 'next/link';
@@ -11,12 +10,14 @@ export default function PurchaseConfirmationPage() {
         <div className="glass" style={{ padding: '50px', textAlign: 'center', maxWidth: '600px', margin: '50px auto' }}>
             <h1><i className="fas fa-check-circle" style={{ color: 'var(--primary-color)', fontSize: '2.5rem', marginBottom: '20px' }}></i> Purchase Confirmed!</h1>
             <p style={{ fontSize: '1.1rem', marginBottom: '25px' }}>Your tickets have been successfully purchased.</p>
-            <p style={{ fontSize: '1rem', marginBottom: '30px', color: 'rgba(255, 255, 255, 0.8)' }}>A confirmation email with your tickets has been sent to your email address.</p>
+            
+            {/* --- THIS LINE WAS CHANGED --- */}
+            <p className="confirmation-subtext">A confirmation email with your tickets has been sent to your email address.</p>
+            
             <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
                 <Link href="/" className="cta-button" style={{ fontSize: '1rem', padding: '10px 20px' }}>Continue Shopping</Link>
                 
                 {user && (
-                    // --- THE FIX: Added a hyphen to the href ---
                     <Link href="/my-tickets" id="view-my-tickets-btn" className="cta-button" style={{ fontSize: '1rem', padding: '10px 20px' }}>View My Tickets</Link>
                 )}
             </div>
