@@ -2,7 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
-import { format, toDate, utcToZonedTime } from 'date-fns-tz';
+import { format, toDate } from 'date-fns-tz';
 import { startOfDay } from 'date-fns';
 
 export default async function HomePage() {
@@ -10,10 +10,10 @@ export default async function HomePage() {
     
     const timeZone = 'America/New_York';
 
-    // Reliably get the start of today to filter out past events
+    // Start of today for filtering
     const startOfToday = startOfDay(new Date());
     
-    // Find events that are approved and happening on or after today
+    // Approved, today or later
     const events = await Event.find({ 
         status: 'approved',
         eventDate: { $gte: startOfToday }
@@ -27,15 +27,13 @@ export default async function HomePage() {
                     <p>No upcoming events at the moment.</p>
                 ) : (
                     events.map(event => {
-                        // ✅ FIX: Convert stored UTC date to New York date first
-                        const zonedDay = utcToZonedTime(event.eventDate, timeZone);
-                        const localDate = format(zonedDay, 'yyyy-MM-dd', { timeZone });
+                        // Build the date string using New York's calendar day
+                        const localDate = format(new Date(event.eventDate), 'yyyy-MM-dd', { timeZone });
                         const eventDateString = `${localDate}T${event.eventTime}`;
 
-                        // Build Date object for formatting
+                        // Timezone-aware Date for display
                         const eventDateObj = toDate(eventDateString, { timeZone });
                         
-                        // Format the date and time for the homepage
                         const displayDate = format(eventDateObj, 'M/d/yy', { timeZone });
                         const displayTime = format(eventDateObj, 'h:mm a', { timeZone });
 
