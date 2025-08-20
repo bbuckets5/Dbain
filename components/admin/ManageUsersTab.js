@@ -2,30 +2,44 @@
 
 import { useState, useEffect } from 'react';
 
+// --- FIX #1: Add the same authenticated fetch helper from your other admin tabs ---
+const authedFetch = async (url, options = {}) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    const body =
+        options.body && typeof options.body !== 'string'
+            ? JSON.stringify(options.body)
+            : options.body;
+    const res = await fetch(url, { ...options, headers, body });
+    // Try to parse JSON, but default to an empty object if it fails
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        // Use the message from the JSON body if available, otherwise use a default
+        throw new Error(data.message || 'An API error occurred.');
+    }
+    return data;
+};
+
+
 export default function ManageUsersTab() {
     const [users, setUsers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true); // Set to true to load initially
     const [error, setError] = useState(null);
-
-    const fetchUsers = async (searchQuery) => {
+    
+    // --- FIX #2: Update fetchUsers to use authedFetch and handle initial load ---
+    const fetchUsers = async (searchQuery = '') => {
         setLoading(true);
         setError(null);
         try {
-            const url = searchQuery ? `/api/users?search=${encodeURIComponent(searchQuery)}` : '';
-            
-            if (!url) {
-                setUsers([]);
-                setLoading(false);
-                return;
-            }
-
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('Failed to fetch users.');
-            }
-            const data = await response.json();
-            setUsers(data);
+            // Always fetch, but add search query if it exists
+            const url = `/api/users?search=${encodeURIComponent(searchQuery)}`;
+            const data = await authedFetch(url); // Use the authenticated fetch
+            setUsers(data.users || []); // The API returns an object with a 'users' array
         } catch (err) {
             setError(err.message);
         } finally {
@@ -34,6 +48,7 @@ export default function ManageUsersTab() {
     };
 
     useEffect(() => {
+        // Use a debounce effect for searching
         const handler = setTimeout(() => {
             fetchUsers(searchTerm);
         }, 500);
@@ -42,21 +57,21 @@ export default function ManageUsersTab() {
             clearTimeout(handler);
         };
     }, [searchTerm]);
+    
+    // Fetch users when the component first loads
+    useEffect(() => {
+        fetchUsers();
+    }, []);
 
+    // --- FIX #3: Update handleRoleChange to use authedFetch ---
     const handleRoleChange = async (userId, newRole) => {
         if (!confirm(`Are you sure you want to change this user's role to '${newRole}'?`)) return;
 
         try {
-            const response = await fetch(`/api/users/${userId}/role`, {
+            await authedFetch(`/api/users/${userId}/role`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ role: newRole }),
+                body: { role: newRole },
             });
-
-            if (!response.ok) {
-                const result = await response.json();
-                throw new Error(result.message || 'Failed to update role');
-            }
             
             fetchUsers(searchTerm);
             alert('User role updated successfully!');
@@ -94,7 +109,7 @@ export default function ManageUsersTab() {
                 {loading && <p className="loading-message">Loading users...</p>}
                 {error && <p className="error-msg">{error}</p>}
                 {!loading && !error && users.length === 0 && (
-                    <p className="empty-msg">To view users, please search by Name or Email in the bar above.</p>
+                    <p className="empty-msg">{searchTerm ? 'No users found for this search.' : 'No users found.'}</p>
                 )}
                 {!loading && !error && users.length > 0 && (
                     users.map(user => (
