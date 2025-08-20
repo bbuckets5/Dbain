@@ -1,10 +1,12 @@
+// In app/events/[event-id]/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import TicketManager from '@/components/TicketManager';
-import { format, toDate } from 'date-fns-tz';
+import { getLocalEventDate } from '@/lib/dateUtils'; // Use the corrected utility
+import { toDate } from 'date-fns-tz';
 
 export default function EventDetailsPage({ params }) {
     const eventId = params['event-id'];
@@ -44,14 +46,13 @@ export default function EventDetailsPage({ params }) {
         );
     }
     
-    const timeZone = 'America/New_York';
-    const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
-    const eventDateObj = toDate(eventDateString, { timeZone });
-    
+    // Use the corrected utility for all display times
+    const { fullDate: formattedDate, time: formattedTime } = getLocalEventDate(event);
+
+    // For checking if the event has started
+    const eventDateObj = toDate(event.eventDate, { timeZone: 'America/New_York' });
     const eventHasStarted = new Date() > eventDateObj;
     const isSoldOut = event.ticketsSold >= event.ticketCount;
-    const formattedDate = format(eventDateObj, 'EEEE, MMMM d, yyyy', { timeZone });
-    const formattedTime = format(eventDateObj, 'h:mm a', { timeZone });
 
     return (
         <main className="main-content">
