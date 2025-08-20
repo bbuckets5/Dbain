@@ -2299,6 +2299,11 @@ input[type="time"]::-webkit-calendar-picker-indicator { /* Added time input type
 .pagination-controls {
   /* --- ADD THIS LINE --- Adds space above the buttons */
   margin-top: 20px;
+  
+  /* --- ADD THESE LINES --- */
+  display: flex;         /* Arranges the buttons and text in a flexible row */
+  align-items: center;   /* Vertically aligns everything neatly in the middle */
+  gap: 15px;             /* Creates space between each item (the buttons and the text) */
 }
 
 /* Style for smaller pagination buttons */
