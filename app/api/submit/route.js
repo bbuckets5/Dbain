@@ -3,7 +3,7 @@ import dbConnect from '@/lib/dbConnect';
 import cloudinary from 'cloudinary';
 import Event from '@/models/Event';
 import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend';
-import { zonedTimeToUtc } from 'date-fns-tz'; // ✅ timezone fix
+import * as dateFnsTz from 'date-fns-tz'; // ✅ FIX: Corrected import style
 
 cloudinary.v2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -86,7 +86,6 @@ export async function POST(request) {
         const flyerPublicId = uploadResult.public_id;
         const flyerSecureUrl = uploadResult.secure_url;
 
-        // ✅ Safe fallback for thumbnail & placeholder
         let flyerImageThumbnailPath = flyerSecureUrl;
         let flyerImagePlaceholderPath = flyerSecureUrl;
 
@@ -105,8 +104,8 @@ export async function POST(request) {
         const lastName = 'User';
         const submitterEmail = (process.env.ADMIN_EMAIL_ADDRESS || process.env.FROM_EMAIL_ADDRESS || 'admin@clicketickets.com').toLowerCase();
 
-        // ✅ Save date in New York timezone
-        const eventDate = zonedTimeToUtc(`${eventDateRaw}T00:00:00`, 'America/New_York');
+        // ✅ FIX: Using the corrected import
+        const eventDate = dateFnsTz.zonedTimeToUtc(`${eventDateRaw}T00:00:00`, 'America/New_York');
 
         const newEvent = new Event({
             firstName,
