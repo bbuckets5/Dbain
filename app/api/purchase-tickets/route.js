@@ -7,6 +7,7 @@ import { getOptionalAuth } from '@/lib/auth';
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
 import { format, toDate } from 'date-fns-tz';
+import { getLocalEventDate } from '@/lib/dateUtils'; // <-- ADDED THIS LINE
 
 export async function POST(request) {
     await dbConnect();
@@ -52,7 +53,7 @@ export async function POST(request) {
                 for (let i = 0; i < ticketRequest.quantity; i++) {
                     createdTickets.push({
                         eventId: event._id,
-                        userId: userId || null,                // FIX: store userId if logged in
+                        userId: userId || null,        // FIX: store userId if logged in
                         ticketType: ticketRequest.name,
                         price: ticketOption.price,
                         customerFirstName: customerInfo.firstName,
@@ -78,10 +79,10 @@ export async function POST(request) {
             let ticketsHtml = '';
             for (const ticketDoc of savedTicketDocs) {
                 const event = await Event.findById(ticketDoc.eventId).lean();
-                const eventDateString = `${event.eventDate.toISOString().substring(0, 10)}T${event.eventTime}`;
-                const eventDateObj = toDate(eventDateString, { timeZone });
-                const formattedDate = format(eventDateObj, 'EEEE, MMMM d, yyyy', { timeZone });
-                const formattedTime = format(eventDateObj, 'h:mm a', { timeZone });
+                
+                // <-- THE FIX IS HERE
+                const { formattedDate, formattedTime } = getLocalEventDate(event);
+                
                 const qrCodeDataUrl = await qrcode.toDataURL(ticketDoc._id.toString(), { width: 150, margin: 2 });
                 ticketsHtml += `<div><p><strong>Event:</strong> ${event.eventName}</p><p><strong>Date:</strong> ${formattedDate} at ${formattedTime}</p><p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p><img src="${qrCodeDataUrl}" /></div>`;
             }
