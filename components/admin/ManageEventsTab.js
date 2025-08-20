@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
-// --- THE FIX: Use the correct 'toDate' function ---
-import { format, toDate } from 'date-fns-tz';
+// --- FIX #1: Import your working date utility ---
+import { getLocalEventDate } from '@/lib/dateUtils';
 
 // Helper: fetch with auth token
 const authedFetch = async (url, options = {}) => {
@@ -109,11 +109,8 @@ export default function ManageEventsTab() {
                 <p>No event submissions found.</p>
             ) : (
                 events.map((event) => {
-                    // --- THE FIX: Simplified and corrected date formatting ---
-                    const timeZone = 'America/New_York';
-                    const eventDateString = `${event.eventDate.substring(0, 10)}T${event.eventTime}`;
-                    const eventDateObj = toDate(eventDateString, { timeZone });
-                    const formattedDate = format(eventDateObj, 'P', { timeZone }); // 'P' is a format like MM/DD/YYYY
+                    // --- FIX #2: Use the date utility to get the correct date and time ---
+                    const { shortDate, time } = getLocalEventDate(event);
 
                     const dropdownActions = [];
                     if (event.status === 'pending') {
@@ -140,7 +137,8 @@ export default function ManageEventsTab() {
                         <div key={event._id} className="submission-card glass">
                             <h4>{event.eventName}</h4>
                             <p><strong>Submitter:</strong> {event.firstName} {event.lastName}</p>
-                            <p><strong>Date:</strong> {formattedDate}</p>
+                            {/* --- FIX #3: Display the correct date and time --- */}
+                            <p><strong>Date:</strong> {shortDate} at {time}</p>
                             <p><strong>Tickets Sold:</strong> {event.ticketsSold} / {event.ticketCount}</p>
                             <p><strong>Status:</strong> <span className={`status-indicator status-${event.status}`}>{event.status}</span></p>
                             <div className="submission-actions">
