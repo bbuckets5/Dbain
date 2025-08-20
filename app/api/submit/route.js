@@ -3,7 +3,7 @@ import dbConnect from '@/lib/dbConnect';
 import cloudinary from 'cloudinary';
 import Event from '@/models/Event';
 import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend';
-const { zonedTimeToUtc } = require('date-fns-tz'); // ✅ FIX: Using require to prevent import errors
+import { zonedTimeToUtc } from 'date-fns-tz/esm'; // ✅ FINAL FIX: More specific import path
 
 cloudinary.v2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -104,7 +104,6 @@ export async function POST(request) {
         const lastName = 'User';
         const submitterEmail = (process.env.ADMIN_EMAIL_ADDRESS || process.env.FROM_EMAIL_ADDRESS || 'admin@clicketickets.com').toLowerCase();
 
-        // ✅ FIX: Using the corrected import
         const eventDate = zonedTimeToUtc(`${eventDateRaw}T00:00:00`, 'America/New_York');
 
         const newEvent = new Event({
