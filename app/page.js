@@ -3,20 +3,15 @@ import Image from 'next/image';
 import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
 import { format, toDate } from 'date-fns-tz';
-import { startOfDay } from 'date-fns';
 
 export default async function HomePage() {
     await dbConnect();
     
     const timeZone = 'America/New_York';
 
-    // Start of today for filtering
-    const startOfToday = startOfDay(new Date());
-    
-    // Approved, today or later
+    // Fetch all approved events (no date filter)
     const events = await Event.find({ 
-        status: 'approved',
-        eventDate: { $gte: startOfToday }
+        status: 'approved'
     }).sort({ eventDate: 1 }).lean();
 
     return (

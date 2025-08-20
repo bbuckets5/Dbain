@@ -7,12 +7,12 @@ export async function GET(request) {
     await dbConnect();
 
     try {
-        // 1. Use our standard helper to ensure the user is a verified admin.
+        // Ensure user is an admin
         await requireAdmin();
 
-        // 2. Find only 'approved' events and sort them by the soonest event date.
+        // Fetch ALL approved events (past + future)
         const events = await Event.find({ status: 'approved' })
-            .sort({ eventDate: 1 }) // Sort by event date, soonest first
+            .sort({ eventDate: 1 })
             .lean();
 
         return NextResponse.json(events, { status: 200 });

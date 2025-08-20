@@ -6,15 +6,9 @@ export async function GET(request) {
     try {
         await dbConnect();
 
-        // --- This is the corrected logic ---
-        // Get the current date and set the time to the very beginning (midnight).
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-
+        // Fetch ALL approved events (past + future)
         const approvedEvents = await Event.find({ 
-            status: 'approved',
-            // Now we compare against the start of today, not the exact current time.
-            eventDate: { $gte: startOfToday } 
+            status: 'approved'
         })
         .sort({ eventDate: 1 })
         .lean();
