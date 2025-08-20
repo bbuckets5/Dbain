@@ -25,50 +25,119 @@ function formatTimeForEmail(timeString) {
 
 export async function POST(request) {
     await dbConnect();
-    
+
     try {
-        const body = await request.json();
-        // Add submitterEmail to the list of expected data
-        const {
-            firstName, lastName, businessName, submitterEmail, phone,
-            eventName, eventDescription, eventDate, eventTime, eventLocation,
-            ticketCount, ticketTypes, flyerPublicId, flyerSecureUrl
-        } = body;
-        
-        // Add submitterEmail to the validation check
-        if (!firstName || !lastName || !submitterEmail || !eventName || !eventDate || !ticketCount || !flyerPublicId || !ticketTypes) {
+        // ---- READ MULTIPART FORM DATA (admin form posts FormData) ----
+        const form = await request.formData();
+
+        // Basic fields from the admin form
+        const eventName = form.get('eventName')?.toString().trim();
+        const eventDateRaw = form.get('eventDate')?.toString().trim(); // "YYYY-MM-DD"
+        const eventTime = form.get('eventTime')?.toString().trim();     // "HH:mm"
+        const eventLocation = form.get('eventLocation')?.toString().trim();
+        const eventDescription = form.get('eventDescription')?.toString().trim();
+        const ticketCountRaw = form.get('ticketCount')?.toString().trim();
+        const flyer = form.get('flyer'); // Blob/File
+
+        // The admin UI sends ticket arrays:
+        // ticket_type[], ticket_price[], ticket_includes[]
+        const types = form.getAll('ticket_type[]').map(v => v.toString());
+        const prices = form.getAll('ticket_price[]').map(v => v.toString());
+        const includes = form.getAll('ticket_includes[]').map(v => v.toString());
+
+        // ---- VALIDATION (minimal, to match your current data model) ----
+        if (!eventName || !eventDateRaw || !eventTime || !eventLocation || !ticketCountRaw || !flyer) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
         }
-        if (!Array.isArray(ticketTypes) || ticketTypes.length === 0) {
-             return NextResponse.json({ message: 'At least one ticket type is required.' }, { status: 400 });
-        }
-        if (isNaN(Date.parse(eventDate))) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDateRaw)) {
             return NextResponse.json({ message: 'Invalid event date format.' }, { status: 400 });
         }
+        if (!/^\d{2}:\d{2}$/.test(eventTime)) {
+            return NextResponse.json({ message: 'Invalid event time format.' }, { status: 400 });
+        }
+        const ticketCount = Number(ticketCountRaw);
+        if (!Number.isFinite(ticketCount) || ticketCount < 0) {
+            return NextResponse.json({ message: 'Invalid ticket count.' }, { status: 400 });
+        }
+        if (types.length === 0 || prices.length === 0 || types.length !== prices.length) {
+            return NextResponse.json({ message: 'At least one ticket type with price is required.' }, { status: 400 });
+        }
 
+        // Build ticketTypes to match your Event model (type/price/includes)
+        const ticketTypes = types.map((label, i) => ({
+            type: label,
+            price: Number(prices[i] ?? 0),
+            includes: (includes[i] ?? '').toString(),
+        }));
+
+        // ---- UPLOAD FLYER TO CLOUDINARY ----
+        // Next.js provides Blob for files; convert to Buffer and stream to Cloudinary
+        const arrayBuffer = await flyer.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        const uploadResult = await new Promise((resolve, reject) => {
+            const stream = cloudinary.v2.uploader.upload_stream(
+                {
+                    folder: 'events',
+                    resource_type: 'image',
+                    format: 'webp', // Cloudinary will transform anyway; we keep original URL too
+                },
+                (err, result) => {
+                    if (err) return reject(err);
+                    resolve(result);
+                }
+            );
+            stream.end(buffer);
+        });
+
+        const flyerPublicId = uploadResult.public_id;
+        const flyerSecureUrl = uploadResult.secure_url;
+
+        // Generate derived thumbnail and placeholder URLs
+        const flyerImageThumbnailPath = cloudinary.v2.url(flyerPublicId, {
+            width: 800, crop: 'scale', format: 'webp', quality: 'auto:good',
+        });
+        const flyerImagePlaceholderPath = cloudinary.v2.url(flyerPublicId, {
+            width: 20, crop: 'scale', format: 'webp', quality: 'auto:low', effect: 'blur:2000',
+        });
+
+        // ---- REQUIRED FIELDS THE ADMIN FORM DOESN'T PROVIDE ----
+        // Your Event model requires: firstName, lastName, submitterEmail
+        // We fill them with admin defaults, since this is an admin-created event.
+        const firstName = 'Admin';
+        const lastName = 'User';
+        const submitterEmail = (process.env.ADMIN_EMAIL_ADDRESS || process.env.FROM_EMAIL_ADDRESS || 'admin@clicketickets.com').toLowerCase();
+
+        // Convert "YYYY-MM-DD" to Date (UTC midnight of that day)
+        const eventDate = new Date(`${eventDateRaw}T00:00:00.000Z`);
+
+        // ---- CREATE & SAVE EVENT ----
         const newEvent = new Event({
-            firstName, lastName, businessName, submitterEmail, phone,
-            eventName, eventDescription, eventDate, eventTime, eventLocation,
+            firstName,
+            lastName,
+            businessName: '', // admin form doesn’t provide this
+            submitterEmail,
+            phone: '', // admin form doesn’t provide this
+            eventName,
+            eventDescription: eventDescription || 'No description provided.',
+            eventDate,
+            eventTime,
+            eventLocation,
             ticketCount,
             tickets: ticketTypes,
             flyerImagePath: flyerSecureUrl,
             flyerPublicId: flyerPublicId,
-            flyerImageThumbnailPath: cloudinary.v2.url(flyerPublicId, {
-                width: 800, crop: 'scale', format: 'webp', quality: 'auto:good',
-            }),
-            flyerImagePlaceholderPath: cloudinary.v2.url(flyerPublicId, {
-                width: 20, crop: 'scale', format: 'webp', quality: 'auto:low', effect: 'blur:2000',
-            }),
-            status: 'pending'
+            flyerImageThumbnailPath,
+            flyerImagePlaceholderPath,
+            status: 'pending',
         });
 
         await newEvent.save();
 
+        // ---- OPTIONAL: Notify admin mailbox (same as your previous behavior) ----
         const adminEmail = process.env.ADMIN_EMAIL_ADDRESS;
         if (adminEmail) {
             const adminUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin-dashboard`;
-            
-            // --- DETAILED EMAIL CONTENT ---
             const emailHtmlContent = `
               <div style="font-family: Arial, sans-serif; color:#333; line-height:1.6; max-width: 600px;">
                 <h2>New Event Submission: "${eventName}"</h2>
@@ -78,8 +147,6 @@ export async function POST(request) {
                 <ul>
                     <li><strong>Name:</strong> ${firstName} ${lastName}</li>
                     <li><strong>Email:</strong> ${submitterEmail}</li>
-                    <li><strong>Phone:</strong> ${phone || 'Not provided'}</li>
-                    <li><strong>Business:</strong> ${businessName || 'Not provided'}</li>
                 </ul>
                 <h3>Event Details</h3>
                 <ul>
@@ -91,7 +158,7 @@ export async function POST(request) {
                 <h3>Ticket Details</h3>
                 <ul>
                     <li><strong>Total Tickets to Sell:</strong> ${ticketCount}</li>
-                    ${ticketTypes.map(t => `<li><strong>${t.type}:</strong> $${parseFloat(t.price).toFixed(2)}</li>`).join('')}
+                    ${ticketTypes.map(t => `<li><strong>${t.type}:</strong> $${Number(t.price).toFixed(2)} ${t.includes ? `— ${t.includes}` : ''}</li>`).join('')}
                 </ul>
                 <hr>
                 <p style="text-align: center;">
@@ -102,15 +169,20 @@ export async function POST(request) {
               </div>
             `;
 
-            const params = new EmailParams()
-                .setFrom(FROM)
-                .setTo([new Recipient(adminEmail, "Admin")])
-                .setSubject(`New Event Submission: "${eventName}"`)
-                .setHtml(emailHtmlContent);
+            try {
+                const params = new EmailParams()
+                    .setFrom(FROM)
+                    .setTo([new Recipient(adminEmail, "Admin")])
+                    .setSubject(`New Event Submission: "${eventName}"`)
+                    .setHtml(emailHtmlContent);
 
-            await mailer.email.send(params);
+                await mailer.email.send(params);
+            } catch (emailErr) {
+                // Don’t fail the request if email fails
+                console.error('Admin notification email failed:', emailErr);
+            }
         }
-        
+
         return NextResponse.json({ message: 'Event submitted successfully!', id: newEvent._id }, { status: 201 });
 
     } catch (error) {
