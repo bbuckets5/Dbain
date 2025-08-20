@@ -9,7 +9,7 @@ const initialFormState = {
     firstName: '',
     lastName: '',
     businessName: '',
-    submitterEmail: '', // New field for submitter's email
+    submitterEmail: '',
     eventName: '',
     eventDate: '',
     eventLocation: '',
@@ -63,52 +63,38 @@ export default function TicketFormPage() {
             return;
         }
 
+        // 1. Create a FormData object
+        const formData = new FormData();
+
+        // 2. Add all the text fields from your form state
+        for (const key in formState) {
+            if (key !== 'ticketTypes') {
+                formData.append(key, formState[key]);
+            }
+        }
+
+        // 3. Add the ticket types correctly for the backend
+        formState.ticketTypes.forEach(ticket => {
+            formData.append('ticket_type[]', ticket.type);
+            formData.append('ticket_price[]', ticket.price);
+            formData.append('ticket_includes[]', ticket.includes);
+        });
+
+        // 4. Add the flyer file
+        formData.append('flyer', flyer);
+
         try {
-            const paramsToSign = {
-                timestamp: Math.round(new Date().getTime() / 1000),
-                folder: 'event-flyers',
-            };
-            
-            const signResponse = await fetch('/api/sign-upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ paramsToSign }),
-            });
-            if (!signResponse.ok) throw new Error('Could not get upload signature.');
-            const signData = await signResponse.json();
-
-            const uploadFormData = new FormData();
-            uploadFormData.append('file', flyer);
-            uploadFormData.append('api_key', process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY);
-            uploadFormData.append('timestamp', paramsToSign.timestamp);
-            uploadFormData.append('signature', signData.signature);
-            uploadFormData.append('folder', 'event-flyers');
-
-            const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
-            
-            const uploadResponse = await fetch(cloudinaryUrl, {
-                method: 'POST',
-                body: uploadFormData,
-            });
-            
-            if (!uploadResponse.ok) throw new Error('Failed to upload flyer to Cloudinary.');
-            const uploadData = await uploadResponse.json();
-
-            // ✅ FIXED FIELD NAMES TO MATCH BACKEND
-            const eventPayload = {
-                ...formState,
-                flyerImagePath: uploadData.secure_url, // main flyer image
-                flyerImageThumbnailPath: uploadData.eager?.[0]?.secure_url || uploadData.secure_url, // fallback to main if no eager
-            };
-
+            // 5. Send the FormData to your API
+            //    DO NOT set the 'Content-Type' header, the browser does it for you.
             const submitResponse = await fetch('/api/submit', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(eventPayload),
+                body: formData,
             });
-            
+
             const result = await submitResponse.json();
-            if (!submitResponse.ok) throw new Error(result.message);
+            if (!submitResponse.ok) {
+                throw new Error(result.message || 'An unknown error occurred.');
+            }
 
             setMessage({ type: 'success', text: 'Event submitted successfully! It is now pending approval.' });
             setFormState(initialFormState);
