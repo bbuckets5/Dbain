@@ -1,8 +1,28 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Modal from '@/components/modal'; // Import the new Modal component
-import { useRouter } from 'next/navigation'; // Import the useRouter hook
+import Modal from '@/components/modal';
+import { useRouter } from 'next/navigation';
+
+// --- FIX #1: Add the authenticated fetch helper ---
+const authedFetch = async (url, options = {}) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    const body =
+        options.body && typeof options.body !== 'string'
+            ? JSON.stringify(options.body)
+            : options.body;
+    const res = await fetch(url, { ...options, headers, body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(data.message || 'An API error occurred.');
+    }
+    return data;
+};
 
 export default function CheckinPage() {
     const [events, setEvents] = useState([]);
@@ -35,17 +55,16 @@ export default function CheckinPage() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                // Corrected endpoint to match your server
-                const response = await fetch('/api/events');
-                if (!response.ok) throw new Error('Could not fetch events.');
-                const data = await response.json();
+                // --- FIX #2: Use authedFetch to get the event list ---
+                // NOTE: This endpoint might need to be /api/admin/events depending on your routes
+                const data = await authedFetch('/api/events'); 
                 setEvents(data);
                 if (data.length === 0) {
                      showCustomAlert('No Events Found', 'There are no events available for you to manage.');
                 }
             } catch (error) {
                 console.error('Failed to fetch events', error);
-                showCustomAlert('Error', 'Could not load event list. Please try again later.');
+                showCustomAlert('Error', `Could not load event list: ${error.message}`);
             }
         };
         fetchEvents();
@@ -61,15 +80,14 @@ export default function CheckinPage() {
 
         const fetchStats = async () => {
             try {
-                const response = await fetch(`/api/checkin/stats/${selectedEventId}`);
-                if (!response.ok) throw new Error('Failed to load stats');
-                const data = await response.json();
+                // --- FIX #3: Use authedFetch to get the event stats ---
+                const data = await authedFetch(`/api/checkin/stats/${selectedEventId}`);
                 setStats(data);
                 setScanResult({ message: '<i class="fas fa-qrcode"></i> Ready to scan', type: 'info' });
             } catch (error) {
                 console.error('Failed to fetch stats', error);
                 setStats(null);
-                showCustomAlert('Error', 'Could not load stats for the selected event.');
+                showCustomAlert('Error', `Could not load stats: ${error.message}`);
             }
         };
         fetchStats();
@@ -85,32 +103,29 @@ export default function CheckinPage() {
 
         setIsLoading(true);
         try {
-            const response = await fetch('/api/tickets/checkin', {
+            // --- FIX #4: Use authedFetch to process the check-in ---
+            const result = await authedFetch('/api/tickets/checkin', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticketId, eventId: selectedEventId })
+                body: { ticketId, eventId: selectedEventId }
             });
-            const result = await response.json();
-            if (response.ok) {
-                setScanResult({ message: `<i class="fas fa-check-circle"></i> ${result.message || 'Valid Ticket'}`, type: 'success' });
-                setStats(prevStats => ({ ...prevStats, checkedInCount: prevStats.checkedInCount + 1 }));
-            } else {
-                setScanResult({ message: `<i class="fas fa-times-circle"></i> ${result.message || 'Invalid Ticket'}`, type: 'error' });
-                showCustomAlert('Check-in Failed', result.message);
-            }
+
+            setScanResult({ message: `<i class="fas fa-check-circle"></i> ${result.message || 'Valid Ticket'}`, type: 'success' });
+            // Refetch stats to get the most up-to-date count
+            const latestStats = await authedFetch(`/api/checkin/stats/${selectedEventId}`);
+            setStats(latestStats);
+
         } catch (error) {
             console.error('Check-in error:', error);
-            setScanResult({ message: 'Network error during check-in', type: 'error' });
-            showCustomAlert('Error', 'A network error occurred.');
+            setScanResult({ message: `<i class="fas fa-times-circle"></i> ${error.message || 'Invalid Ticket'}`, type: 'error' });
+            showCustomAlert('Check-in Failed', error.message);
         } finally {
             setTicketId('');
             setIsLoading(false);
-            // Clear the message after a few seconds and set to ready state
             setTimeout(() => {
                 if (selectedEventId) {
-                     setScanResult({ message: '<i class="fas fa-qrcode"></i> Ready to scan', type: 'info' });
+                    setScanResult({ message: '<i class="fas fa-qrcode"></i> Ready to scan', type: 'info' });
                 } else {
-                     setScanResult({ message: '<i class="fas fa-qrcode"></i> Select an event to begin', type: 'info' });
+                    setScanResult({ message: '<i class="fas fa-qrcode"></i> Select an event to begin', type: 'info' });
                 }
             }, 5000);
         }
@@ -163,7 +178,7 @@ export default function CheckinPage() {
                 isOpen={modal.isOpen} 
                 title={modal.title} 
                 message={modal.message} 
-                onClose={() => setModal({ isOpen: false, title: '', message: '' })} 
+                onClose={modal.onClose} 
             />
         </>
     );
