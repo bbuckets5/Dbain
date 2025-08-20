@@ -3,6 +3,7 @@ import dbConnect from '@/lib/dbConnect';
 import cloudinary from 'cloudinary';
 import Event from '@/models/Event';
 import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend';
+import { zonedTimeToUtc } from 'date-fns-tz'; // ✅ added
 
 cloudinary.v2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -27,25 +28,20 @@ export async function POST(request) {
     await dbConnect();
 
     try {
-        // ---- READ MULTIPART FORM DATA (admin form posts FormData) ----
         const form = await request.formData();
 
-        // Basic fields from the admin form
         const eventName = form.get('eventName')?.toString().trim();
         const eventDateRaw = form.get('eventDate')?.toString().trim(); // "YYYY-MM-DD"
         const eventTime = form.get('eventTime')?.toString().trim();     // "HH:mm"
         const eventLocation = form.get('eventLocation')?.toString().trim();
         const eventDescription = form.get('eventDescription')?.toString().trim();
         const ticketCountRaw = form.get('ticketCount')?.toString().trim();
-        const flyer = form.get('flyer'); // Blob/File
+        const flyer = form.get('flyer');
 
-        // The admin UI sends ticket arrays:
-        // ticket_type[], ticket_price[], ticket_includes[]
         const types = form.getAll('ticket_type[]').map(v => v.toString());
         const prices = form.getAll('ticket_price[]').map(v => v.toString());
         const includes = form.getAll('ticket_includes[]').map(v => v.toString());
 
-        // ---- VALIDATION (minimal, to match your current data model) ----
         if (!eventName || !eventDateRaw || !eventTime || !eventLocation || !ticketCountRaw || !flyer) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
         }
@@ -63,15 +59,12 @@ export async function POST(request) {
             return NextResponse.json({ message: 'At least one ticket type with price is required.' }, { status: 400 });
         }
 
-        // Build ticketTypes to match your Event model (type/price/includes)
         const ticketTypes = types.map((label, i) => ({
             type: label,
             price: Number(prices[i] ?? 0),
             includes: (includes[i] ?? '').toString(),
         }));
 
-        // ---- UPLOAD FLYER TO CLOUDINARY ----
-        // Next.js provides Blob for files; convert to Buffer and stream to Cloudinary
         const arrayBuffer = await flyer.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
@@ -80,7 +73,7 @@ export async function POST(request) {
                 {
                     folder: 'events',
                     resource_type: 'image',
-                    format: 'webp', // Cloudinary will transform anyway; we keep original URL too
+                    format: 'webp',
                 },
                 (err, result) => {
                     if (err) return reject(err);
@@ -93,7 +86,6 @@ export async function POST(request) {
         const flyerPublicId = uploadResult.public_id;
         const flyerSecureUrl = uploadResult.secure_url;
 
-        // Generate derived thumbnail and placeholder URLs
         const flyerImageThumbnailPath = cloudinary.v2.url(flyerPublicId, {
             width: 800, crop: 'scale', format: 'webp', quality: 'auto:good',
         });
@@ -101,23 +93,19 @@ export async function POST(request) {
             width: 20, crop: 'scale', format: 'webp', quality: 'auto:low', effect: 'blur:2000',
         });
 
-        // ---- REQUIRED FIELDS THE ADMIN FORM DOESN'T PROVIDE ----
-        // Your Event model requires: firstName, lastName, submitterEmail
-        // We fill them with admin defaults, since this is an admin-created event.
         const firstName = 'Admin';
         const lastName = 'User';
         const submitterEmail = (process.env.ADMIN_EMAIL_ADDRESS || process.env.FROM_EMAIL_ADDRESS || 'admin@clicketickets.com').toLowerCase();
 
-        // Convert "YYYY-MM-DD" to Date (UTC midnight of that day)
-        const eventDate = new Date(`${eventDateRaw}T00:00:00.000Z`);
+        // ✅ FIX: Save date in New York timezone
+        const eventDate = zonedTimeToUtc(`${eventDateRaw}T00:00:00`, 'America/New_York');
 
-        // ---- CREATE & SAVE EVENT ----
         const newEvent = new Event({
             firstName,
             lastName,
-            businessName: '', // admin form doesn’t provide this
+            businessName: '',
             submitterEmail,
-            phone: '', // admin form doesn’t provide this
+            phone: '',
             eventName,
             eventDescription: eventDescription || 'No description provided.',
             eventDate,
@@ -134,7 +122,6 @@ export async function POST(request) {
 
         await newEvent.save();
 
-        // ---- OPTIONAL: Notify admin mailbox (same as your previous behavior) ----
         const adminEmail = process.env.ADMIN_EMAIL_ADDRESS;
         if (adminEmail) {
             const adminUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin-dashboard`;
@@ -151,7 +138,7 @@ export async function POST(request) {
                 <h3>Event Details</h3>
                 <ul>
                     <li><strong>Event Name:</strong> ${eventName}</li>
-                    <li><strong>Date:</strong> ${new Date(eventDate).toLocaleDateString('en-US', { timeZone: 'UTC' })}</li>
+                    <li><strong>Date:</strong> ${new Date(eventDate).toLocaleDateString('en-US', { timeZone: 'America/New_York' })}</li>
                     <li><strong>Time:</strong> ${formatTimeForEmail(eventTime)}</li>
                     <li><strong>Location:</strong> ${eventLocation}</li>
                 </ul>
@@ -178,7 +165,6 @@ export async function POST(request) {
 
                 await mailer.email.send(params);
             } catch (emailErr) {
-                // Don’t fail the request if email fails
                 console.error('Admin notification email failed:', emailErr);
             }
         }
