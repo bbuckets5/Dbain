@@ -2294,3 +2294,12 @@ input[type="time"]::-webkit-calendar-picker-indicator { /* Added time input type
     margin-bottom: 30px;
     color: #333; /* This is your theme's primary dark grey text color */
 }
+
+/* --- Style for smaller pagination buttons --- */
+.pagination-controls .cta-button {
+  /* Adjusts the space inside the button. The first value is top/bottom, the second is left/right. */
+  padding: 6px 12px;
+
+  /* Makes the text inside the button smaller. */
+  font-size: 14px;
+}
