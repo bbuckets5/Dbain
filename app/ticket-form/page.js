@@ -94,10 +94,11 @@ export default function TicketFormPage() {
             if (!uploadResponse.ok) throw new Error('Failed to upload flyer to Cloudinary.');
             const uploadData = await uploadResponse.json();
 
+            // ✅ FIXED FIELD NAMES TO MATCH BACKEND
             const eventPayload = {
                 ...formState,
-                flyerPublicId: uploadData.public_id,
-                flyerSecureUrl: uploadData.secure_url,
+                flyerImagePath: uploadData.secure_url, // main flyer image
+                flyerImageThumbnailPath: uploadData.eager?.[0]?.secure_url || uploadData.secure_url, // fallback to main if no eager
             };
 
             const submitResponse = await fetch('/api/submit', {
@@ -139,7 +140,6 @@ export default function TicketFormPage() {
                         <label htmlFor="businessName">Business Name</label>
                         <input type="text" id="businessName" name="businessName" value={formState.businessName} onChange={handleInputChange} />
                     </div>
-                    {/* --- NEW EMAIL INPUT ADDED HERE --- */}
                     <div className="form-group">
                         <label htmlFor="submitterEmail">Your Email Address (for notifications)</label>
                         <input type="email" id="submitterEmail" name="submitterEmail" required value={formState.submitterEmail} onChange={handleInputChange} />
@@ -160,7 +160,6 @@ export default function TicketFormPage() {
                         <label htmlFor="eventTime">Event Time</label>
                         <input type="time" id="eventTime" name="eventTime" required value={formState.eventTime} onChange={handleInputChange} />
                     </div>
-                    {/* --- PHONE INPUT UPDATED HERE --- */}
                     <div className="form-group">
                         <label htmlFor="phone">Telephone Contact</label>
                         <Cleave 
@@ -170,7 +169,7 @@ export default function TicketFormPage() {
                             onChange={handleInputChange} 
                             options={{ phone: true, phoneRegionCode: 'US' }} 
                             placeholder="(123) 456-7890"
-                            className="your-input-class-name" // Add your CSS class for styling
+                            className="your-input-class-name"
                         />
                     </div>
                     <div className="form-group">
