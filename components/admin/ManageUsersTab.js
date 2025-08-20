@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-// --- FIX #1: Add the same authenticated fetch helper from your other admin tabs ---
+// Helper for authenticated API calls
 const authedFetch = async (url, options = {}) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const headers = {
@@ -15,69 +15,73 @@ const authedFetch = async (url, options = {}) => {
             ? JSON.stringify(options.body)
             : options.body;
     const res = await fetch(url, { ...options, headers, body });
-    // Try to parse JSON, but default to an empty object if it fails
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-        // Use the message from the JSON body if available, otherwise use a default
         throw new Error(data.message || 'An API error occurred.');
     }
     return data;
 };
 
-
 export default function ManageUsersTab() {
     const [users, setUsers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [loading, setLoading] = useState(true); // Set to true to load initially
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    
-    // --- FIX #2: Update fetchUsers to use authedFetch and handle initial load ---
-    const fetchUsers = async (searchQuery = '') => {
+
+    // --- FIX #1: Add state for pagination ---
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+
+    // --- FIX #2: Update fetchUsers to handle pages ---
+    const fetchUsers = async (searchQuery = '', page = 1) => {
         setLoading(true);
         setError(null);
         try {
-            // Always fetch, but add search query if it exists
-            const url = `/api/users?search=${encodeURIComponent(searchQuery)}`;
-            const data = await authedFetch(url); // Use the authenticated fetch
-            setUsers(data.users || []); // The API returns an object with a 'users' array
+            const url = `/api/users?search=${encodeURIComponent(searchQuery)}&page=${page}`;
+            const data = await authedFetch(url);
+            setUsers(data.users || []);
+            setCurrentPage(data.currentPage || 1);
+            setTotalPages(data.totalPages || 1);
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
         }
     };
-
+    
+    // Effect for handling search input with debounce
     useEffect(() => {
-        // Use a debounce effect for searching
         const handler = setTimeout(() => {
-            fetchUsers(searchTerm);
+            // --- FIX #3: Reset to page 1 on new search ---
+            fetchUsers(searchTerm, 1);
         }, 500);
 
-        return () => {
-            clearTimeout(handler);
-        };
+        return () => clearTimeout(handler);
     }, [searchTerm]);
     
-    // Fetch users when the component first loads
+    // Effect for initial load
     useEffect(() => {
-        fetchUsers();
+        fetchUsers('', 1);
     }, []);
 
-    // --- FIX #3: Update handleRoleChange to use authedFetch ---
     const handleRoleChange = async (userId, newRole) => {
         if (!confirm(`Are you sure you want to change this user's role to '${newRole}'?`)) return;
-
         try {
             await authedFetch(`/api/users/${userId}/role`, {
                 method: 'PATCH',
                 body: { role: newRole },
             });
-            
-            fetchUsers(searchTerm);
+            fetchUsers(searchTerm, currentPage); // Refetch the current page
             alert('User role updated successfully!');
-
         } catch (err) {
             alert(`Error: ${err.message}`);
+        }
+    };
+    
+    // --- FIX #4: Add page change handler ---
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            fetchUsers(searchTerm, newPage);
         }
     };
 
@@ -108,12 +112,11 @@ export default function ManageUsersTab() {
             <div id="registered-users-list">
                 {loading && <p className="loading-message">Loading users...</p>}
                 {error && <p className="error-msg">{error}</p>}
-                {!loading && !error && users.length === 0 && (
-                    <p className="empty-msg">{searchTerm ? 'No users found for this search.' : 'No users found.'}</p>
-                )}
+                {/* User list rendering... (no changes needed here) */}
                 {!loading && !error && users.length > 0 && (
                     users.map(user => (
                         <div key={user._id} className="user-card glass">
+                            {/* ... user details ... */}
                             <div className="user-details">
                                 <p><strong>Name:</strong> {user.firstName} {user.lastName}</p>
                                 <p><strong>Email:</strong> {user.email}</p>
@@ -133,7 +136,33 @@ export default function ManageUsersTab() {
                         </div>
                     ))
                 )}
+                {!loading && !error && users.length === 0 && (
+                    <p className="empty-msg">{searchTerm ? 'No users found for this search.' : 'No users found.'}</p>
+                )}
             </div>
+
+            {/* --- FIX #5: Add pagination buttons to the UI --- */}
+            {!loading && !error && totalPages > 1 && (
+                <div className="pagination-controls">
+                    <button 
+                        onClick={() => handlePageChange(currentPage - 1)} 
+                        disabled={currentPage <= 1}
+                        className="cta-button"
+                    >
+                        &larr; Previous
+                    </button>
+                    <span>
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button 
+                        onClick={() => handlePageChange(currentPage + 1)} 
+                        disabled={currentPage >= totalPages}
+                        className="cta-button"
+                    >
+                        Next &rarr;
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
