@@ -70,7 +70,8 @@ export default function LoginPage() {
 
                 <div className="form-links">
                     <Link href="/forgot-password">Forgot your password?</Link>
-                    <Link href="/signup">Don't have an account? Sign up here.</Link>
+                    {/* --- FIX: Changed "Don't" to "Don&apos;t" to fix the build error --- */}
+                    <Link href="/signup">Don&apos;t have an account? Sign up here.</Link>
                 </div>
             </form>
         </div>
