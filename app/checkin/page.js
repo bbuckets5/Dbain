@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // Import useCallback
 import Modal from '@/components/modal';
 import { useRouter } from 'next/navigation';
 
-// --- FIX #1: Add the authenticated fetch helper ---
 const authedFetch = async (url, options = {}) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const headers = {
@@ -37,6 +36,9 @@ export default function CheckinPage() {
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     const router = useRouter();
 
+    // --- FIX #1: Add state for the history list ---
+    const [history, setHistory] = useState([]);
+
     const showCustomAlert = (title, message, navigateTo) => {
         setModal({ 
             isOpen: true, 
@@ -55,8 +57,6 @@ export default function CheckinPage() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                // --- FIX #2: Use authedFetch to get the event list ---
-                // NOTE: This endpoint might need to be /api/admin/events depending on your routes
                 const data = await authedFetch('/api/events'); 
                 setEvents(data);
                 if (data.length === 0) {
@@ -70,19 +70,32 @@ export default function CheckinPage() {
         fetchEvents();
     }, []);
 
-    // Fetch stats when a new event is selected
+    // --- FIX #2: Create a reusable function to fetch history ---
+    const fetchHistory = useCallback(async () => {
+        if (!selectedEventId) return;
+        try {
+            const data = await authedFetch(`/api/checkin/history/${selectedEventId}`);
+            setHistory(data);
+        } catch (error) {
+            console.error("Failed to fetch history:", error.message);
+        }
+    }, [selectedEventId]);
+
+
+    // Fetch stats and history when a new event is selected
     useEffect(() => {
         if (!selectedEventId) {
             setStats(null);
+            setHistory([]); // Clear history when no event is selected
             setScanResult({ message: '<i class="fas fa-qrcode"></i> Select an event to begin', type: 'info' });
             return;
         }
 
-        const fetchStats = async () => {
+        const fetchStatsAndHistory = async () => {
             try {
-                // --- FIX #3: Use authedFetch to get the event stats ---
                 const data = await authedFetch(`/api/checkin/stats/${selectedEventId}`);
                 setStats(data);
+                await fetchHistory(); // Fetch initial history
                 setScanResult({ message: '<i class="fas fa-qrcode"></i> Ready to scan', type: 'info' });
             } catch (error) {
                 console.error('Failed to fetch stats', error);
@@ -90,8 +103,17 @@ export default function CheckinPage() {
                 showCustomAlert('Error', `Could not load stats: ${error.message}`);
             }
         };
-        fetchStats();
-    }, [selectedEventId]);
+        
+        fetchStatsAndHistory();
+
+        // --- FIX #3: Add auto-refreshing logic for the history feed ---
+        const intervalId = setInterval(fetchHistory, 5000); // Refresh every 5 seconds
+
+        // Cleanup function to stop the interval when the component unmounts or the event changes
+        return () => clearInterval(intervalId);
+
+    }, [selectedEventId, fetchHistory]);
+
 
     const handleCheckin = async (e) => {
         if (e) e.preventDefault();
@@ -103,16 +125,17 @@ export default function CheckinPage() {
 
         setIsLoading(true);
         try {
-            // --- FIX #4: Use authedFetch to process the check-in ---
             const result = await authedFetch('/api/tickets/checkin', {
                 method: 'POST',
                 body: { ticketId, eventId: selectedEventId }
             });
 
             setScanResult({ message: `<i class="fas fa-check-circle"></i> ${result.message || 'Valid Ticket'}`, type: 'success' });
-            // Refetch stats to get the most up-to-date count
             const latestStats = await authedFetch(`/api/checkin/stats/${selectedEventId}`);
             setStats(latestStats);
+
+            // --- FIX #4: Immediately refresh history after a successful check-in ---
+            await fetchHistory();
 
         } catch (error) {
             console.error('Check-in error:', error);
@@ -134,6 +157,7 @@ export default function CheckinPage() {
     return (
         <>
             <h1>Event Check-in</h1>
+            {/* ... event selector and stats display ... (no changes here) */}
             <p className="form-description">First, select an event. Then, scan tickets to check attendees in.</p>
             <div className="event-selector-container glass">
                 <label htmlFor="event-selector">Select an Event:</label>
@@ -155,25 +179,42 @@ export default function CheckinPage() {
                     </div>
 
                     <div className="checkin-scanner-area">
-                        <div id="scan-result-display" className={`scan-result ${scanResult.type}`} dangerouslySetInnerHTML={{ __html: scanResult.message }}>
-                        </div>
+                       {/* ... scanner form ... (no changes here) */}
+                       <div id="scan-result-display" className={`scan-result ${scanResult.type}`} dangerouslySetInnerHTML={{ __html: scanResult.message }}></div>
                         <form onSubmit={handleCheckin}>
-                            <input 
-                                type="text" 
-                                id="ticket-id-input" 
-                                placeholder="Scan ticket here..." 
-                                value={ticketId}
-                                onChange={(e) => setTicketId(e.target.value)}
-                                autoFocus 
-                            />
-                            <button id="manual-checkin-btn" className="cta-button" type="submit" disabled={isLoading}>
-                                {isLoading ? 'Checking in...' : 'Manual Check-in'}
-                            </button>
+                            <input type="text" id="ticket-id-input" placeholder="Scan ticket here..." value={ticketId} onChange={(e) => setTicketId(e.target.value)} autoFocus />
+                            <button id="manual-checkin-btn" className="cta-button" type="submit" disabled={isLoading}>{isLoading ? 'Checking in...' : 'Manual Check-in'}</button>
                         </form>
                     </div>
                 </div>
             )}
             
+            {/* --- FIX #5: Add the JSX to display the live history feed --- */}
+            {selectedEventId && (
+                <div className="checkin-history-container glass">
+                    <h2>Recent Check-ins</h2>
+                    {history.length > 0 ? (
+                        <ul className="history-list">
+                            {history.map(ticket => (
+                                <li key={ticket._id} className="history-item">
+                                    <span className="name">
+                                        {ticket.customerFirstName} {ticket.customerLastName}
+                                    </span>
+                                    <span className="time">
+                                        Checked in at {new Date(ticket.checkedInAt).toLocaleTimeString()}
+                                    </span>
+                                    <span className="staff">
+                                        by {ticket.checkedInBy ? `${ticket.checkedInBy.firstName} ${ticket.checkedInBy.lastName}` : 'N/A'}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p>No check-ins recorded yet.</p>
+                    )}
+                </div>
+            )}
+
             <Modal 
                 isOpen={modal.isOpen} 
                 title={modal.title} 
