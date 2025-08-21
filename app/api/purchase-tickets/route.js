@@ -72,7 +72,16 @@ export async function POST(request) {
         const recipient = new Recipient(normalizedEmail);
         const firstEvent = await Event.findById(purchases[0].eventId).lean();
         
-        // --- FIX: Generate the ticket HTML for everyone first ---
+        // --- FIX: Define the full, absolute URL to your logo ---
+        const logoUrl = 'https://dbain.vercel.app/images/Clicketicketslogo.png';
+        
+        // --- FIX: Create a reusable HTML header with the logo ---
+        const emailHeader = `
+            <div style="text-align: center; margin-bottom: 30px;">
+                <img src="${logoUrl}" alt="Click eTickets Logo" style="width: 200px; height: auto;" />
+            </div>
+        `;
+
         let ticketsHtml = '';
         for (const ticketDoc of savedTicketDocs) {
             const event = await Event.findById(ticketDoc.eventId).lean();
@@ -89,11 +98,10 @@ export async function POST(request) {
             `;
         }
 
-        // --- FIX: Customize the introductory text based on user type ---
-        let emailHtmlContent;
+        let emailBody;
         if (userId) {
             // Logged-in user message
-            emailHtmlContent = `
+            emailBody = `
                 <h2>Purchase Confirmation</h2>
                 <p>Hello ${customerInfo.firstName}, thank you for your purchase!</p>
                 <p>Your tickets are included below. They have also been saved to your account and can be viewed anytime in the "My Tickets" section of our website.</p>
@@ -101,12 +109,15 @@ export async function POST(request) {
             `;
         } else {
             // Guest user message
-            emailHtmlContent = `
+            emailBody = `
                 <h2>Your Tickets</h2>
                 <p>Hello ${customerInfo.firstName}, thank you for your purchase! Your tickets are attached below.</p>
                 ${ticketsHtml}
             `;
         }
+
+        // --- FIX: Combine the header and body for the final HTML content ---
+        const emailHtmlContent = emailHeader + emailBody;
 
         const emailParams = new EmailParams()
             .setFrom(sender).setTo([recipient])
