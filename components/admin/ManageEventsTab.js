@@ -4,8 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
 import { getLocalEventDate } from '@/lib/dateUtils';
-import html2pdf from 'html2pdf.js';
 import EventReport from '@/components/EventReport';
+// --- FIX: The top-level import of 'html2pdf.js' is removed ---
 
 // Helper: fetch with auth token
 const authedFetch = async (url, options = {}) => {
@@ -30,8 +30,6 @@ export default function ManageEventsTab() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const router = useRouter();
-
-    // --- State and ref for PDF generation ---
     const [isPrinting, setIsPrinting] = useState(false);
     const [reportData, setReportData] = useState(null);
     const reportRef = useRef();
@@ -53,36 +51,41 @@ export default function ManageEventsTab() {
         fetchEvents();
     }, []);
 
-    // --- Function to handle downloading the report ---
     const handleDownloadReport = async (eventId, eventName) => {
+        // --- FIX: Dynamically import the library inside the click handler ---
+        const html2pdf = (await import('html2pdf.js')).default;
+        
         if (isPrinting) return;
         setIsPrinting(true);
         try {
             const data = await authedFetch(`/api/events/${eventId}/report`);
-            // Pass eventName for the filename
-            setReportData({ ...data, eventName: eventName }); 
+            setReportData({ ...data, eventName: eventName });
         } catch (err) {
             alert(`Error fetching report data: ${err.message}`);
             setIsPrinting(false);
         }
     };
 
-    // --- useEffect to trigger PDF generation after data is fetched ---
     useEffect(() => {
-        if (reportData && reportRef.current) {
-            const options = {
-                filename: `${reportData.eventName.replace(/ /g, '_')}_Report.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-            };
+        const generatePdf = async () => {
+            if (reportData && reportRef.current) {
+                // --- FIX: Dynamically import here as well for this effect ---
+                const html2pdf = (await import('html2pdf.js')).default;
 
-            html2pdf().from(reportRef.current).set(options).save().then(() => {
-                // Cleanup after PDF is generated and saved
-                setReportData(null);
-                setIsPrinting(false);
-            });
-        }
+                const options = {
+                    filename: `${reportData.eventName.replace(/ /g, '_')}_Report.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+    
+                html2pdf().from(reportRef.current).set(options).save().then(() => {
+                    setReportData(null);
+                    setIsPrinting(false);
+                });
+            }
+        };
+        generatePdf();
     }, [reportData]);
 
     const handleUpdateStatus = async (eventId, newStatus) => {
@@ -186,7 +189,6 @@ export default function ManageEventsTab() {
                                     <button onClick={() => handleFinishEvent(event._id, event.eventName)} className="cta-button">Finish Event</button>
                                 )}
                                 
-                                {/* --- The "Download Report" button for finished events --- */}
                                 {event.status === 'finished' && (
                                     <button onClick={() => handleDownloadReport(event._id, event.eventName)} className="cta-button" disabled={isPrinting}>
                                         {isPrinting ? 'Generating...' : 'Download Report'}
@@ -200,7 +202,6 @@ export default function ManageEventsTab() {
                 })
             )}
             
-            {/* --- The hidden EventReport component that will be printed --- */}
             {reportData && (
                 <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
                     <EventReport ref={reportRef} reportData={reportData} />
