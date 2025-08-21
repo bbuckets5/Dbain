@@ -1,4 +1,3 @@
-// app/login/page.js
 'use client';
 
 import { useState } from 'react';
@@ -69,16 +68,11 @@ export default function LoginPage() {
                     </button>
                 </div>
 
-                {/* Forgot Password Link */}
-                <p style={{ textAlign: 'center', marginTop: '10px' }}>
+                <div className="form-links">
                     <Link href="/forgot-password">Forgot your password?</Link>
-                </p>
+                    <Link href="/signup">Don't have an account? Sign up here.</Link>
+                </div>
             </form>
-
-            <p style={{ textAlign: 'center', marginTop: '20px' }}>
-                {/* FIXED: Replaced 'Don't' with 'Don&apos;t' */}
-                Don&apos;t have an account? <Link href="/signup">Sign up here</Link>
-            </p>
         </div>
     );
 }

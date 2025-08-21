@@ -2395,3 +2395,36 @@ input[type="time"]::-webkit-calendar-picker-indicator { /* Added time input type
   color: #333;
   margin-right: 8px;
 }
+
+/* --- Login & Signup Page: Form Links --- */
+
+.form-links {
+  /* This turns the container into a flexbox */
+  display: flex;
+  /* This pushes the two links to opposite ends */
+  justify-content: space-between;
+  /* Adds some space above the links */
+  margin-top: 25px;
+  /* Ensures items don't wrap on small screens unnecessarily */
+  flex-wrap: wrap;
+  gap: 10px; /* Adds a small gap for when they wrap on mobile */
+  padding: 0 5px; /* Adds a little horizontal space */
+}
+
+/* Modifier to center the content when there's only one link */
+.form-links.centered {
+  justify-content: center;
+}
+
+.form-links a {
+  color: #333; /* A standard text color */
+  text-decoration: none; /* Removes the default underline */
+  font-size: 0.9em;
+  font-weight: 600;
+  transition: color 0.2s ease-in-out;
+}
+
+.form-links a:hover {
+  color: var(--primary-color); /* Changes to your primary blue on hover */
+  text-decoration: underline; /* Adds an underline on hover for clarity */
+}

@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-// Use a single state object for all form fields for better organization
 const initialFormState = {
     firstName: '',
     lastName: '',
@@ -25,7 +24,6 @@ export default function SignupPage() {
         setFormState(prev => ({ ...prev, [id]: value }));
     };
 
-    // This logic for checking password strength is a great feature
     useEffect(() => {
         const { password } = formState;
         if (!password) {
@@ -40,7 +38,7 @@ export default function SignupPage() {
             strength = 1;
             if (/[a-z]/.test(password)) strength++;
             if (/[A-Z]/.test(password)) strength++;
-            if (/\d/.test(password)) strength++;
+            if (/\d]/.test(password)) strength++;
             if (/[@$!%*?&]/.test(password)) strength++;
             
             if (strength < 3) message = 'Weak password';
@@ -48,7 +46,7 @@ export default function SignupPage() {
             else message = 'Strong password!';
         }
         setPasswordStrength({ strength, message });
-    }, [formState.password]);
+    }, [formState]);
 
     const passwordsMatch = formState.password && formState.password === formState.confirmPassword;
 
@@ -62,7 +60,7 @@ export default function SignupPage() {
         setError(null);
 
         try {
-            const { confirmPassword, ...payload } = formState; // Exclude confirmPassword from payload
+            const { confirmPassword, ...payload } = formState;
             const response = await fetch('/api/users/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -115,10 +113,11 @@ export default function SignupPage() {
                         {isLoading ? 'Creating Account...' : 'Create Account'}
                     </button>
                 </div>
+
+                <div className="form-links centered">
+                    <Link href="/login">Already have an account? Log in here.</Link>
+                </div>
             </form>
-            <p style={{ textAlign: 'center', marginTop: '20px' }}>
-                Already have an account? <Link href="/login">Log in here</Link>
-            </p>
         </div>
     );
 }
