@@ -6,7 +6,7 @@ import Ticket from '@/models/Ticket';
 import { getOptionalAuth } from '@/lib/auth';
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
-import { format, toDate } from 'date-fns-tz';
+import { toDate } from 'date-fns-tz';
 import { getLocalEventDate } from '@/lib/dateUtils';
 
 export async function POST(request) {
@@ -70,31 +70,48 @@ export async function POST(request) {
         const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
         const sender = new Sender(process.env.FROM_EMAIL_ADDRESS, "Click eTickets");
         const recipient = new Recipient(normalizedEmail);
-        let emailHtmlContent;
         const firstEvent = await Event.findById(purchases[0].eventId).lean();
+        
+        // --- FIX: Generate the ticket HTML for everyone first ---
+        let ticketsHtml = '';
+        for (const ticketDoc of savedTicketDocs) {
+            const event = await Event.findById(ticketDoc.eventId).lean();
+            const { fullDate, time } = getLocalEventDate(event);
+            const qrCodeDataUrl = await qrcode.toDataURL(ticketDoc._id.toString(), { width: 150, margin: 2 });
+            
+            ticketsHtml += `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <p><strong>Event:</strong> ${event.eventName}</p>
+                    <p><strong>Date:</strong> ${fullDate} at ${time}</p>
+                    <p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p>
+                    <img src="${qrCodeDataUrl}" alt="QR Code for ticket ${ticketDoc._id}" />
+                </div>
+            `;
+        }
 
+        // --- FIX: Customize the introductory text based on user type ---
+        let emailHtmlContent;
         if (userId) {
-            emailHtmlContent = `<h2>Purchase Confirmation</h2><p>Hello ${customerInfo.firstName}, thank you for your purchase!</p><p>Your tickets have been added to your account. View them anytime in "My Tickets".</p>`;
+            // Logged-in user message
+            emailHtmlContent = `
+                <h2>Purchase Confirmation</h2>
+                <p>Hello ${customerInfo.firstName}, thank you for your purchase!</p>
+                <p>Your tickets are included below. They have also been saved to your account and can be viewed anytime in the "My Tickets" section of our website.</p>
+                ${ticketsHtml}
+            `;
         } else {
-            let ticketsHtml = '';
-            for (const ticketDoc of savedTicketDocs) {
-                const event = await Event.findById(ticketDoc.eventId).lean();
-                
-                // <-- FIX #1: Use the correct variable names from your function
-                const { fullDate, time } = getLocalEventDate(event);
-                
-                const qrCodeDataUrl = await qrcode.toDataURL(ticketDoc._id.toString(), { width: 150, margin: 2 });
-                
-                // <-- FIX #2: Use those correct variables here
-                ticketsHtml += `<div><p><strong>Event:</strong> ${event.eventName}</p><p><strong>Date:</strong> ${fullDate} at ${time}</p><p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p><img src="${qrCodeDataUrl}" /></div>`;
-            }
-            emailHtmlContent = `<h2>Your Tickets</h2><p>Hello ${customerInfo.firstName}, here are your tickets:</p>${ticketsHtml}`;
+            // Guest user message
+            emailHtmlContent = `
+                <h2>Your Tickets</h2>
+                <p>Hello ${customerInfo.firstName}, thank you for your purchase! Your tickets are attached below.</p>
+                ${ticketsHtml}
+            `;
         }
 
         const emailParams = new EmailParams()
             .setFrom(sender).setTo([recipient])
             .setSubject(`Your Tickets for ${firstEvent.eventName}`)
-            .setHtml(`<div>${emailHtmlContent}</div>`);
+            .setHtml(`<div style="font-family: Arial, sans-serif; line-height: 1.6;">${emailHtmlContent}</div>`);
 
         await mailerSend.email.send(emailParams);
 
