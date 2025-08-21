@@ -1,23 +1,24 @@
 import React from 'react';
 
-// This component is the visual template for our PDF.
-// We use React.forwardRef to allow the PDF library to directly access the component's underlying HTML element.
 const EventReport = React.forwardRef(({ reportData }, ref) => {
     
-    // Basic inline styles for a clean, printable look
     const styles = {
         page: {
             fontFamily: 'Arial, sans-serif',
             padding: '40px',
             color: '#333',
-            width: '210mm', // Standard A4 paper width
-            minHeight: '297mm', // Standard A4 paper height
+            width: '210mm',
+            minHeight: '297mm',
         },
         header: {
             textAlign: 'center',
             borderBottom: '2px solid #eee',
             paddingBottom: '20px',
             marginBottom: '30px',
+        },
+        logo: {
+            width: '150px',
+            marginBottom: '20px',
         },
         eventName: {
             fontSize: '28px',
@@ -70,12 +71,14 @@ const EventReport = React.forwardRef(({ reportData }, ref) => {
         }
     };
 
-    // Default to empty data to prevent errors if data is missing
     const { event = {}, attendees = [], totalRevenue = 0 } = reportData || {};
 
     return (
         <div ref={ref} style={styles.page}>
             <div style={styles.header}>
+                {/* Use the correct path to your logo inside the /public folder */}
+                <img src="/images/Clicketicketslogo.png" alt="Company Logo" style={styles.logo} />
+
                 <h1 style={styles.eventName}>{event.eventName || 'Event Report'}</h1>
                 <p style={styles.eventMeta}>
                     {event.formattedDate || 'N/A'} at {event.formattedTime || 'N/A'} <br />
@@ -128,7 +131,6 @@ const EventReport = React.forwardRef(({ reportData }, ref) => {
     );
 });
 
-// Set a display name for the component, which is helpful for debugging
 EventReport.displayName = 'EventReport';
 
 export default EventReport;
