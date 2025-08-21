@@ -99,7 +99,6 @@ export default function CheckoutPage() {
         };
 
         try {
-            // --- THIS IS THE FIX ---
             const token = localStorage.getItem('authToken');
             const headers = { 'Content-Type': 'application/json' };
             if (token) {
@@ -108,7 +107,7 @@ export default function CheckoutPage() {
 
             const response = await fetch('/api/purchase-tickets', {
                 method: 'POST',
-                headers: headers, // Use the headers object we just created
+                headers: headers,
                 body: JSON.stringify(payload)
             });
 
@@ -139,6 +138,7 @@ export default function CheckoutPage() {
                     {view === 'prompt' && (
                         <div>
                             <h3 style={{textAlign: 'center'}}>How would you like to proceed?</h3>
+                            <p style={{textAlign: 'center'}}>To purchase tickets, please choose an option below:</p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '300px', margin: '25px auto' }}>
                                 <button type="button" onClick={() => setView('guestEmail')} className="cta-button form-submit-btn">Continue as Guest</button>
                                 <Link href="/login?redirect=/checkout" className="cta-button form-submit-btn" style={{ textAlign: 'center' }}>Log In / Create Profile</Link>
@@ -159,6 +159,9 @@ export default function CheckoutPage() {
                             </div>
                             {error && <p className="error-msg">{error}</p>}
                             <button type="submit" className="cta-button form-submit-btn">Proceed to Payment</button>
+                            <p className="login-prompt">
+                                Already have an account? <Link href="/login?redirect=/checkout">Log In here.</Link>
+                            </p>
                         </form>
                     )}
 
@@ -208,6 +211,11 @@ export default function CheckoutPage() {
                             <button type="submit" className="cta-button form-submit-btn" disabled={isLoading}>
                                 {isLoading ? 'Processing...' : `Complete Purchase - $${total.toFixed(2)}`}
                             </button>
+                            {!user && (
+                                <p className="login-prompt">
+                                    Already have an account? <Link href="/login?redirect=/checkout">Log In here.</Link>
+                                </p>
+                            )}
                         </form>
                     )}
                 </div>
@@ -217,7 +225,10 @@ export default function CheckoutPage() {
                     <div className="summary-items">
                         {cart.length > 0 ? cart.map(item => (
                             <div className="summary-item" key={item.id}>
-                                <span>{item.name} x{item.quantity}</span>
+                                <div className="item-details">
+                                    <span className="event-name">{item.eventName || 'Event'}</span>
+                                    <span className="ticket-type">{item.name} x{item.quantity}</span>
+                                </div>
                                 <span>${(Number(item.price) * item.quantity).toFixed(2)}</span>
                             </div>
                         )) : <p>Your cart is empty.</p>}
