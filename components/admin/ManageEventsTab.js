@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
-// --- FIX #1: Import your working date utility ---
 import { getLocalEventDate } from '@/lib/dateUtils';
+import html2pdf from 'html2pdf.js';
+import EventReport from '@/components/EventReport';
 
 // Helper: fetch with auth token
 const authedFetch = async (url, options = {}) => {
@@ -30,6 +31,11 @@ export default function ManageEventsTab() {
     const [error, setError] = useState(null);
     const router = useRouter();
 
+    // --- State and ref for PDF generation ---
+    const [isPrinting, setIsPrinting] = useState(false);
+    const [reportData, setReportData] = useState(null);
+    const reportRef = useRef();
+
     const fetchEvents = async () => {
         setLoading(true);
         setError(null);
@@ -46,6 +52,38 @@ export default function ManageEventsTab() {
     useEffect(() => {
         fetchEvents();
     }, []);
+
+    // --- Function to handle downloading the report ---
+    const handleDownloadReport = async (eventId, eventName) => {
+        if (isPrinting) return;
+        setIsPrinting(true);
+        try {
+            const data = await authedFetch(`/api/events/${eventId}/report`);
+            // Pass eventName for the filename
+            setReportData({ ...data, eventName: eventName }); 
+        } catch (err) {
+            alert(`Error fetching report data: ${err.message}`);
+            setIsPrinting(false);
+        }
+    };
+
+    // --- useEffect to trigger PDF generation after data is fetched ---
+    useEffect(() => {
+        if (reportData && reportRef.current) {
+            const options = {
+                filename: `${reportData.eventName.replace(/ /g, '_')}_Report.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            html2pdf().from(reportRef.current).set(options).save().then(() => {
+                // Cleanup after PDF is generated and saved
+                setReportData(null);
+                setIsPrinting(false);
+            });
+        }
+    }, [reportData]);
 
     const handleUpdateStatus = async (eventId, newStatus) => {
         try {
@@ -109,7 +147,6 @@ export default function ManageEventsTab() {
                 <p>No event submissions found.</p>
             ) : (
                 events.map((event) => {
-                    // --- FIX #2: Use the date utility to get the correct date and time ---
                     const { shortDate, time } = getLocalEventDate(event);
 
                     const dropdownActions = [];
@@ -137,7 +174,6 @@ export default function ManageEventsTab() {
                         <div key={event._id} className="submission-card glass">
                             <h4>{event.eventName}</h4>
                             <p><strong>Submitter:</strong> {event.firstName} {event.lastName}</p>
-                            {/* --- FIX #3: Display the correct date and time --- */}
                             <p><strong>Date:</strong> {shortDate} at {time}</p>
                             <p><strong>Tickets Sold:</strong> {event.ticketsSold} / {event.ticketCount}</p>
                             <p><strong>Status:</strong> <span className={`status-indicator status-${event.status}`}>{event.status}</span></p>
@@ -149,11 +185,26 @@ export default function ManageEventsTab() {
                                 {event.status === 'approved' && (
                                     <button onClick={() => handleFinishEvent(event._id, event.eventName)} className="cta-button">Finish Event</button>
                                 )}
+                                
+                                {/* --- The "Download Report" button for finished events --- */}
+                                {event.status === 'finished' && (
+                                    <button onClick={() => handleDownloadReport(event._id, event.eventName)} className="cta-button" disabled={isPrinting}>
+                                        {isPrinting ? 'Generating...' : 'Download Report'}
+                                    </button>
+                                )}
+
                                 <ActionsDropdown actions={dropdownActions} />
                             </div>
                         </div>
                     );
                 })
+            )}
+            
+            {/* --- The hidden EventReport component that will be printed --- */}
+            {reportData && (
+                <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+                    <EventReport ref={reportRef} reportData={reportData} />
+                </div>
             )}
         </div>
     );
