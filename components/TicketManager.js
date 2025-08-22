@@ -1,4 +1,3 @@
-// In components/TicketManager.js
 'use client';
 
 import { useState } from 'react';
@@ -8,26 +7,28 @@ function showCustomAlert(title, message, type) {
     alert(`${title}: ${message}`);
 }
 
-// 1. Accept the new 'eventHasStarted' prop
 export default function TicketManager({ tickets, eventName, isSoldOut, eventHasStarted, eventId }) {
     const { addToCart } = useUser(); 
     const [quantities, setQuantities] = useState({});
 
-    const handleQuantityChange = (ticketId, amount) => {
-        const currentQuantity = quantities[ticketId] || 0;
+    // --- FIX: Use ticketType (the name) instead of ticketId ---
+    const handleQuantityChange = (ticketType, amount) => {
+        const currentQuantity = quantities[ticketType] || 0;
         const newQuantity = Math.max(0, currentQuantity + amount);
-        setQuantities(prev => ({ ...prev, [ticketId]: newQuantity }));
+        setQuantities(prev => ({ ...prev, [ticketType]: newQuantity }));
     };
 
     const handleAddToCart = (ticket) => {
-        const quantity = quantities[ticket._id] || 0;
+        // --- FIX: Use ticket.type to get the quantity ---
+        const quantity = quantities[ticket.type] || 0;
         if (quantity === 0) {
             showCustomAlert('Quantity Error', "Please select a quantity greater than zero.", 'error');
             return;
         }
 
         const newItem = {
-            id: `${eventId}_${ticket._id}`,
+            // --- FIX: Use ticket.type for a more robust unique ID ---
+            id: `${eventId}_${ticket.type}`,
             name: ticket.type, 
             quantity: quantity,
             price: ticket.price,
@@ -38,7 +39,6 @@ export default function TicketManager({ tickets, eventName, isSoldOut, eventHasS
         showCustomAlert('Cart Updated', `${quantity} x ${ticket.type} ticket(s) for "${eventName}" added!`, 'success');
     };
 
-    // 2. Add a check for 'eventHasStarted' at the top
     if (eventHasStarted) {
         return (
             <div className="ticket-purchase-area event-started">
@@ -63,7 +63,8 @@ export default function TicketManager({ tickets, eventName, isSoldOut, eventHasS
             <ul className="ticket-options-list">
                 {tickets && tickets.length > 0 ? (
                     tickets.map(ticket => (
-                        <li key={ticket._id} className="ticket-option glass">
+                        // --- FIX: Use ticket.type as the unique key for mapping ---
+                        <li key={ticket.type} className="ticket-option glass">
                             <div className="ticket-info">
                                 <h4>{ticket.type}</h4>
                                 <p className="ticket-price">${Number(ticket.price).toFixed(2)}</p>
@@ -71,9 +72,10 @@ export default function TicketManager({ tickets, eventName, isSoldOut, eventHasS
                             </div>
                             <div className="ticket-controls">
                                 <div className="quantity-selector">
-                                    <button className="quantity-btn minus-btn" onClick={() => handleQuantityChange(ticket._id, -1)}>-</button>
-                                    <span className="quantity-display">{quantities[ticket._id] || 0}</span>
-                                    <button className="quantity-btn plus-btn" onClick={() => handleQuantityChange(ticket._id, 1)}>+</button>
+                                    {/* --- FIX: Pass ticket.type to the handler --- */}
+                                    <button className="quantity-btn minus-btn" onClick={() => handleQuantityChange(ticket.type, -1)}>-</button>
+                                    <span className="quantity-display">{quantities[ticket.type] || 0}</span>
+                                    <button className="quantity-btn plus-btn" onClick={() => handleQuantityChange(ticket.type, 1)}>+</button>
                                 </div>
                                 <button className="cta-button add-to-cart-btn" onClick={() => handleAddToCart(ticket)}>Add to Cart</button>
                             </div>
