@@ -60,7 +60,7 @@ body {
 /* SECTION 4: Header and Footer */
 
 .tagline {
-    font-size: 1.4rem; /* Adjust this value to what you want */
+    font-size: 1.6rem; /* Adjust this value to what you want */
     font-weight: bold; /* Medium weight for better readability */
     color: #333;
 }
@@ -85,7 +85,7 @@ body {
 }
 
 .logo-img {
-    width: 180px; /* Adjust this value to your desired width */
+    width: 200px; /* Adjust this value to your desired width */
     height: auto;   /* This keeps the logo's proportions correct */
 }
 

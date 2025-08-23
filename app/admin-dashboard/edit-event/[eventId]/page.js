@@ -2,46 +2,73 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Cleave from 'cleave.js/react';
+
+// --- FIX: Add our standard authenticated fetch helper ---
+const authedFetch = async (url, options = {}) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    const headers = {
+        // When using FormData, we DO NOT set Content-Type. The browser does it.
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(options.headers || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    // If body is a plain object, stringify it. Otherwise, use it as-is (for FormData).
+    const body = options.body instanceof FormData || typeof options.body === 'string'
+        ? options.body
+        : JSON.stringify(options.body);
+
+    const res = await fetch(url, { ...options, headers, body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(data.message || 'An API error occurred.');
+    }
+    return data;
+};
+
 
 const formatDateForInput = (isoDate) => {
     if (!isoDate) return '';
     const date = new Date(isoDate);
-    return date.toISOString().split('T')[0];
+    // Adjust for timezone offset to prevent off-by-one-day errors in the input
+    const timezoneOffset = date.getTimezoneOffset() * 60000;
+    const adjustedDate = new Date(date.getTime() - timezoneOffset);
+    return adjustedDate.toISOString().split('T')[0];
 };
 
 export default function EditEventPage() {
     const { eventId } = useParams();
-    const router = useRouter(); // Initialize router for redirection
+    const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [isSubmitting, setIsSubmitting] = useState(false); // State for submission
-    const [message, setMessage] = useState(null); // State for success/error messages
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [message, setMessage] = useState(null);
 
-    // State for each form field
     const [eventName, setEventName] = useState('');
     const [eventDate, setEventDate] = useState('');
     const [eventTime, setEventTime] = useState('');
     const [eventLocation, setEventLocation] = useState('');
     const [eventDescription, setEventDescription] = useState('');
     const [ticketCount, setTicketCount] = useState(0);
-    const [ticketTypes, setTicketTypes] = useState([{ label: '', price: '', includes: '' }]);
+    // --- FIX: Renamed 'label' to 'type' to match the database schema ---
+    const [ticketTypes, setTicketTypes] = useState([{ type: '', price: '', includes: '' }]);
     const [currentFlyerUrl, setCurrentFlyerUrl] = useState('');
     
     useEffect(() => {
         if (!eventId) return;
-        // Fetching logic remains the same
         const fetchEventData = async () => {
             try {
-                const response = await fetch(`/api/admin/events/${eventId}`);
-                if (!response.ok) throw new Error('Failed to fetch event data.');
-                const data = await response.json();
+                // --- FIX: Use authedFetch to load event data securely ---
+                const data = await authedFetch(`/api/admin/events/${eventId}`);
+                
                 setEventName(data.eventName);
                 setEventDate(formatDateForInput(data.eventDate));
                 setEventTime(data.eventTime);
                 setEventLocation(data.eventLocation);
                 setEventDescription(data.eventDescription);
                 setTicketCount(data.ticketCount);
-                setTicketTypes(data.tickets && data.tickets.length > 0 ? data.tickets.map(t => ({ label: t.type, price: t.price, includes: t.includes })) : [{ label: '', price: '', includes: '' }]);
+                setTicketTypes(data.tickets && data.tickets.length > 0 ? data.tickets : [{ type: '', price: '', includes: '' }]);
                 setCurrentFlyerUrl(data.flyerImageThumbnailPath);
             } catch (err) {
                 setError(err.message);
@@ -52,14 +79,11 @@ export default function EditEventPage() {
         fetchEventData();
     }, [eventId]);
 
-    // ++ NEW: Updated submission logic ++
     const handleSubmit = async (event) => {
         event.preventDefault();
         setIsSubmitting(true);
         setMessage(null);
 
-        // We now get data from the controlled state, not directly from the form target,
-        // because the controlled state is the single source of truth.
         const formData = new FormData();
         formData.append('eventName', eventName);
         formData.append('eventDate', eventDate);
@@ -68,33 +92,26 @@ export default function EditEventPage() {
         formData.append('eventDescription', eventDescription);
         formData.append('ticketCount', ticketCount);
         
-        // Handle the file input separately
         const flyerInput = event.target.elements.flyer;
         if (flyerInput.files[0]) {
             formData.append('flyer', flyerInput.files[0]);
         }
 
-        // Manually append ticket data from state
         ticketTypes.forEach(ticket => {
-            formData.append('ticket_type[]', ticket.label);
+            formData.append('ticket_type[]', ticket.type);
             formData.append('ticket_price[]', ticket.price);
             formData.append('ticket_includes[]', ticket.includes);
         });
 
         try {
-            const response = await fetch(`/api/admin/events/${eventId}`, {
+            // --- FIX: Use authedFetch to submit the form securely ---
+            await authedFetch(`/api/admin/events/${eventId}`, {
                 method: 'PUT',
                 body: formData,
             });
 
-            const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.message || 'Failed to update event.');
-            }
-
             setMessage({ type: 'success', text: 'Event updated successfully! Redirecting...' });
 
-            // Redirect back to the admin dashboard after a short delay
             setTimeout(() => {
                 router.push('/admin-dashboard');
             }, 2000);
@@ -106,8 +123,7 @@ export default function EditEventPage() {
         }
     };
 
-    // Helper functions for ticket types remain the same
-    const handleAddTicketType = () => setTicketTypes([...ticketTypes, { label: '', price: '', includes: '' }]);
+    const handleAddTicketType = () => setTicketTypes([...ticketTypes, { type: '', price: '', includes: '' }]);
     const handleRemoveTicketType = (index) => { if (ticketTypes.length > 1) setTicketTypes(ticketTypes.filter((_, i) => i !== index)); };
     const handleTicketChange = (index, field, value) => {
         const newTicketTypes = [...ticketTypes];
@@ -133,7 +149,7 @@ export default function EditEventPage() {
                     <div className="form-group"><label htmlFor="ticketCount">Total Tickets Available</label><input type="number" id="ticketCount" name="ticketCount" value={ticketCount} onChange={(e) => setTicketCount(e.target.value)} required /></div>
                     <div className="form-group">
                         <label>Define Ticket Types & Pricing</label>
-                        <div id="add-ticket-types-wrapper">{ticketTypes.map((ticket, index) => (<div key={index} className="ticket-type-entry"><input type="text" className="ticket-label" placeholder="e.g., General Admission" required value={ticket.label} onChange={(e) => handleTicketChange(index, 'label', e.target.value)} /><input type="number" className="ticket-price-input" placeholder="Price (e.g., 40.00)" min="0" step="0.01" required value={ticket.price} onChange={(e) => handleTicketChange(index, 'price', e.target.value)} /><textarea className="ticket-inclusions" placeholder="What's included?" value={ticket.includes} onChange={(e) => handleTicketChange(index, 'includes', e.target.value)}></textarea>{ticketTypes.length > 1 && <button type="button" className="remove-ticket-btn cta-button" onClick={() => handleRemoveTicketType(index)}>Remove</button>}</div>))}</div>
+                        <div id="add-ticket-types-wrapper">{ticketTypes.map((ticket, index) => (<div key={index} className="ticket-type-entry"><input type="text" className="ticket-label" placeholder="e.g., General Admission" required value={ticket.type} onChange={(e) => handleTicketChange(index, 'type', e.target.value)} /><input type="number" className="ticket-price-input" placeholder="Price (e.g., 40.00)" min="0" step="0.01" required value={ticket.price} onChange={(e) => handleTicketChange(index, 'price', e.target.value)} /><textarea className="ticket-inclusions" placeholder="What's included?" value={ticket.includes} onChange={(e) => handleTicketChange(index, 'includes', e.target.value)}></textarea>{ticketTypes.length > 1 && <button type="button" className="remove-ticket-btn cta-button" onClick={() => handleRemoveTicketType(index)}>Remove</button>}</div>))}</div>
                         <button type="button" id="add-new-ticket-type-btn" className="cta-button" onClick={handleAddTicketType}>Add Another Ticket Type</button>
                     </div>
                     {currentFlyerUrl && (<div className="form-group"><label>Current Flyer</label><img src={currentFlyerUrl} alt="Current event flyer" style={{ maxWidth: '200px', height: 'auto', borderRadius: '8px', display: 'block' }} /></div>)}

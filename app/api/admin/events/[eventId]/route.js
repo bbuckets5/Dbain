@@ -7,17 +7,16 @@ import Ticket from '@/models/Ticket';
 import { requireAdmin } from '@/lib/auth';
 import mongoose from 'mongoose';
 
-// Configure Cloudinary for deleting images
 cloudinary.v2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// --- GET: Fetches a single event's details for an admin to view/edit ---
 export async function GET(request, { params }) {
     await dbConnect();
     try {
+        // --- FIX: Added security to ensure only admins can fetch event data for editing ---
         await requireAdmin();
         const { eventId } = params;
 
@@ -39,38 +38,89 @@ export async function GET(request, { params }) {
     }
 }
 
-// --- PUT: A single, powerful function to update any part of an event ---
+// --- FIX: The PUT function is completely rewritten to handle FormData and file uploads ---
 export async function PUT(request, { params }) {
     await dbConnect();
     try {
         await requireAdmin();
         const { eventId } = params;
-        const updateData = await request.json(); // Expecting JSON data
-
+        
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
             return NextResponse.json({ message: 'Invalid Event ID format.' }, { status: 400 });
         }
-
-        const updatedEvent = await Event.findByIdAndUpdate(eventId, updateData, { new: true, runValidators: true });
-        if (!updatedEvent) {
+        
+        const existingEvent = await Event.findById(eventId);
+        if (!existingEvent) {
             return NextResponse.json({ message: 'Event not found' }, { status: 404 });
         }
 
-        // Refresh the cache for the homepage and the event's detail page
+        const formData = await request.formData();
+        const updateData = {};
+
+        // Process simple text fields
+        const fields = ['eventName', 'eventDate', 'eventTime', 'eventLocation', 'eventDescription', 'ticketCount'];
+        fields.forEach(field => {
+            if (formData.has(field)) {
+                updateData[field] = formData.get(field);
+            }
+        });
+        
+        // Handle timezone for date
+        if (updateData.eventDate && updateData.eventTime) {
+            updateData.eventDate = new Date(`${updateData.eventDate}T${updateData.eventTime}:00.000-04:00`);
+        }
+
+        // Process ticket types
+        if (formData.has('ticket_type[]')) {
+            const types = formData.getAll('ticket_type[]');
+            const prices = formData.getAll('ticket_price[]');
+            const includes = formData.getAll('ticket_includes[]');
+            updateData.tickets = types.map((type, i) => ({
+                type,
+                price: Number(prices[i] || 0),
+                includes: includes[i] || '',
+            }));
+        }
+
+        // Handle optional flyer upload
+        const flyer = formData.get('flyer');
+        if (flyer) {
+            // Delete old flyer from Cloudinary
+            if (existingEvent.flyerPublicId) {
+                await cloudinary.v2.uploader.destroy(existingEvent.flyerPublicId);
+            }
+
+            // Upload new flyer
+            const arrayBuffer = await flyer.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const uploadResult = await new Promise((resolve, reject) => {
+                const stream = cloudinary.v2.uploader.upload_stream(
+                    { folder: 'events', resource_type: 'image', format: 'webp' },
+                    (err, result) => err ? reject(err) : resolve(result)
+                );
+                stream.end(buffer);
+            });
+            
+            updateData.flyerImagePath = uploadResult.secure_url;
+            updateData.flyerPublicId = uploadResult.public_id;
+            updateData.flyerImageThumbnailPath = cloudinary.v2.url(uploadResult.public_id, { width: 800, crop: 'scale', format: 'webp', quality: 'auto:good' });
+            updateData.flyerImagePlaceholderPath = cloudinary.v2.url(uploadResult.public_id, { width: 20, crop: 'scale', format: 'webp', quality: 'auto:low', effect: 'blur:2000' });
+        }
+
+        const updatedEvent = await Event.findByIdAndUpdate(eventId, updateData, { new: true, runValidators: true });
+
         revalidatePath('/');
         revalidatePath(`/events/${eventId}`);
 
         return NextResponse.json(updatedEvent, { status: 200 });
+
     } catch (error) {
         console.error('Error updating event:', error);
-        if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
-            return NextResponse.json({ message: `Unauthorized: ${error.message}` }, { status: 403 });
-        }
-        return NextResponse.json({ error: 'Failed to update event.' }, { status: 500 });
+        return NextResponse.json({ message: error.message || 'Failed to update event.' }, { status: 500 });
     }
 }
 
-// --- DELETE: Permanently deletes an event and all its tickets ---
+
 export async function DELETE(request, { params }) {
     await dbConnect();
     try {
@@ -86,18 +136,13 @@ export async function DELETE(request, { params }) {
             return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
         }
 
-        // 1. Delete flyer from Cloudinary using the reliable public_id
         if (eventToDelete.flyerPublicId) {
             await cloudinary.v2.uploader.destroy(eventToDelete.flyerPublicId);
         }
         
-        // 2. Delete all associated tickets to maintain data integrity
         await Ticket.deleteMany({ eventId: eventId });
-
-        // 3. Delete the event itself
         await Event.findByIdAndDelete(eventId);
 
-        // Refresh the cache for the homepage
         revalidatePath('/');
         
         return NextResponse.json({ message: `Event "${eventToDelete.eventName}" deleted.` }, { status: 200 });
