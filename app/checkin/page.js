@@ -150,7 +150,7 @@ export default function CheckinPage() {
                 } else {
                     setScanResult({ message: '<i class="fas fa-qrcode"></i> Select an event to begin', type: 'info' });
                 }
-            }, 5000);
+            }, 8000);
         }
     };
 

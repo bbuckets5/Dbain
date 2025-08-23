@@ -72,10 +72,9 @@ export async function POST(request) {
         const recipient = new Recipient(normalizedEmail);
         const firstEvent = await Event.findById(purchases[0].eventId).lean();
         
-        // --- FIX: Define the full, absolute URL to your logo ---
-        const logoUrl = 'https://dbain.vercel.app/images/Clicketicketslogo.png';
+        // --- FIX: Updated the logo URL to use your new custom domain ---
+        const logoUrl = 'https://clicketickets.com/images/Clicketicketslogo.png';
         
-        // --- FIX: Create a reusable HTML header with the logo ---
         const emailHeader = `
             <div style="text-align: center; margin-bottom: 30px;">
                 <img src="${logoUrl}" alt="Click eTickets Logo" style="width: 200px; height: auto;" />
@@ -93,6 +92,8 @@ export async function POST(request) {
                     <p><strong>Event:</strong> ${event.eventName}</p>
                     <p><strong>Date:</strong> ${fullDate} at ${time}</p>
                     <p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p>
+                    {/* --- FIX: Added the missing Ticket ID line --- */}
+                    <p><strong>Ticket ID:</strong> ${ticketDoc._id.toString()}</p>
                     <img src="${qrCodeDataUrl}" alt="QR Code for ticket ${ticketDoc._id}" />
                 </div>
             `;
@@ -100,7 +101,6 @@ export async function POST(request) {
 
         let emailBody;
         if (userId) {
-            // Logged-in user message
             emailBody = `
                 <h2>Purchase Confirmation</h2>
                 <p>Hello ${customerInfo.firstName}, thank you for your purchase!</p>
@@ -108,7 +108,6 @@ export async function POST(request) {
                 ${ticketsHtml}
             `;
         } else {
-            // Guest user message
             emailBody = `
                 <h2>Your Tickets</h2>
                 <p>Hello ${customerInfo.firstName}, thank you for your purchase! Your tickets are attached below.</p>
@@ -116,7 +115,6 @@ export async function POST(request) {
             `;
         }
 
-        // --- FIX: Combine the header and body for the final HTML content ---
         const emailHtmlContent = emailHeader + emailBody;
 
         const emailParams = new EmailParams()
