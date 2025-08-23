@@ -59,7 +59,7 @@ export default function Header() {
                         height={50} // Adjust these values as needed for your design
                     />
                     {/* FIXED: Replaced unescaped quotes with &quot; */}
-                    <p className="tagline">Click eTickets: &quot;Click It For Ticket!&quot;</p>
+                    <p className="tagline">&quot;Click It For Ticket!&quot;</p>
                 </div>
             </Link>
 
