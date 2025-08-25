@@ -4,16 +4,44 @@ import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
 import { getLocalEventDate } from '../lib/dateUtils';
 
-export default async function HomePage() {
+// --- FIX: Add searchParams to the function to read the page number from the URL ---
+export default async function HomePage({ searchParams }) {
     await dbConnect();
     
-    const events = await Event.find({ 
-        status: 'approved'
-    }).sort({ eventDate: 1 }).lean();
+    // --- FIX: Pagination Logic ---
+    const page = parseInt(searchParams.page) || 1;
+    const limit = 9; // Show 9 events per page as requested
+    const skip = (page - 1) * limit;
+
+    const query = { status: 'approved' };
+
+    // Get the total count of approved events for the counter and total pages
+    const totalEvents = await Event.countDocuments(query);
+    const totalPages = Math.ceil(totalEvents / limit);
+
+    // Fetch only the 9 events for the current page
+    const events = await Event.find(query)
+        .sort({ eventDate: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+    // --- FIX: Calculate the item numbers for the counter text ---
+    const startItem = totalEvents > 0 ? skip + 1 : 0;
+    const endItem = skip + events.length;
 
     return (
         <main className="container">
-            <h1 className="page-title">Upcoming Events</h1>
+            {/* --- FIX: Container for title and the new counter --- */}
+            <div className="page-header-controls">
+                <h1 className="page-title">Upcoming Events</h1>
+                {totalEvents > 0 && (
+                    <div className="pagination-meta">
+                        Showing {startItem} - {endItem} of {totalEvents} events
+                    </div>
+                )}
+            </div>
+
             <div id="event-list-container" className="event-grid">
                 {events.length === 0 ? (
                     <p>No upcoming events at the moment.</p>
@@ -45,6 +73,26 @@ export default async function HomePage() {
                     })
                 )}
             </div>
+            
+            {/* --- FIX: Add the pagination navigation links --- */}
+            {totalPages > 1 && (
+                <div className="pagination-nav">
+                    {page > 1 ? (
+                        <Link href={`/?page=${page - 1}`} className="cta-button">&larr; Previous Page</Link>
+                    ) : (
+                        <span className="cta-button disabled">&larr; Previous Page</span>
+                    )}
+                    
+                    <span>Page {page} of {totalPages}</span>
+                    
+                    {page < totalPages ? (
+                        <Link href={`/?page=${page + 1}`} className="cta-button">Next Page &rarr;</Link>
+                    ) : (
+                        <span className="cta-button disabled">Next Page &rarr;</span>
+                    )}
+                </div>
+            )}
+
             <div className="ticket-your-event-container" style={{ textAlign: 'center', margin: '40px 0' }}>
                 <Link href="/ticket-form" className="cta-button">
                     Ticket Your Event
