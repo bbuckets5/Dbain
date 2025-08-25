@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import ActionsDropdown from './ActionsDropdown';
 import { getLocalEventDate } from '@/lib/dateUtils';
 import EventReport from '@/components/EventReport';
-// --- FIX: The top-level import of 'html2pdf.js' is removed ---
 
-// Helper: fetch with auth token
 const authedFetch = async (url, options = {}) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const headers = {
@@ -33,13 +31,20 @@ export default function ManageEventsTab() {
     const [isPrinting, setIsPrinting] = useState(false);
     const [reportData, setReportData] = useState(null);
     const reportRef = useRef();
+    
+    // --- FIX: Add state for pagination ---
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
 
-    const fetchEvents = async () => {
+    // --- FIX: Update fetchEvents to handle pages ---
+    const fetchEvents = async (page = 1) => {
         setLoading(true);
         setError(null);
         try {
-            const data = await authedFetch('/api/submissions');
-            setEvents(Array.isArray(data) ? data : []);
+            const data = await authedFetch(`/api/submissions?page=${page}`);
+            setEvents(data.events || []); // The API now returns an object with an 'events' array
+            setCurrentPage(data.currentPage || 1);
+            setTotalPages(data.totalPages || 1);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -48,13 +53,11 @@ export default function ManageEventsTab() {
     };
 
     useEffect(() => {
-        fetchEvents();
+        fetchEvents(1); // Fetch the first page on initial load
     }, []);
 
     const handleDownloadReport = async (eventId, eventName) => {
-        // --- FIX: Dynamically import the library inside the click handler ---
         const html2pdf = (await import('html2pdf.js')).default;
-        
         if (isPrinting) return;
         setIsPrinting(true);
         try {
@@ -69,16 +72,13 @@ export default function ManageEventsTab() {
     useEffect(() => {
         const generatePdf = async () => {
             if (reportData && reportRef.current) {
-                // --- FIX: Dynamically import here as well for this effect ---
                 const html2pdf = (await import('html2pdf.js')).default;
-
                 const options = {
                     filename: `${reportData.eventName.replace(/ /g, '_')}_Report.pdf`,
                     image: { type: 'jpeg', quality: 0.98 },
                     html2canvas: { scale: 2 },
                     jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
                 };
-    
                 html2pdf().from(reportRef.current).set(options).save().then(() => {
                     setReportData(null);
                     setIsPrinting(false);
@@ -87,7 +87,7 @@ export default function ManageEventsTab() {
         };
         generatePdf();
     }, [reportData]);
-
+    
     const handleUpdateStatus = async (eventId, newStatus) => {
         try {
             await authedFetch(`/api/submissions/${eventId}/status`, {
@@ -95,7 +95,7 @@ export default function ManageEventsTab() {
                 body: { status: newStatus },
             });
             alert(`Event status updated to ${newStatus}.`);
-            fetchEvents();
+            fetchEvents(currentPage); // Refetch the current page after an update
         } catch (err) {
             alert(`Error: ${err.message}`);
         }
@@ -109,9 +109,16 @@ export default function ManageEventsTab() {
                 body: { status: 'finished' },
             });
             alert(`Event "${eventName}" marked as finished.`);
-            fetchEvents();
+            fetchEvents(currentPage); // Refetch the current page
         } catch (err) {
             alert(`Error: ${err.message}`);
+        }
+    };
+    
+    // --- FIX: Add page change handler ---
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            fetchEvents(newPage);
         }
     };
 
@@ -124,7 +131,7 @@ export default function ManageEventsTab() {
         try {
             const result = await authedFetch(`/api/refunds/event/${eventId}`, { method: 'POST' });
             alert(result.message || 'Refund triggered.');
-            fetchEvents();
+            fetchEvents(currentPage); // Refetch the current page
         } catch (err) {
             alert(`Error: ${err.message}`);
         }
@@ -135,7 +142,7 @@ export default function ManageEventsTab() {
         try {
             const result = await authedFetch(`/api/admin/events/${eventId}`, { method: 'DELETE' });
             alert(result.message || 'Event deleted.');
-            fetchEvents();
+            fetchEvents(1); // Go back to page 1 after deleting
         } catch (err) {
             alert(`Error: ${err.message}`);
         }
@@ -202,6 +209,29 @@ export default function ManageEventsTab() {
                 })
             )}
             
+            {/* --- FIX: Add pagination controls --- */}
+            {!loading && totalPages > 1 && (
+                <div className="pagination-controls">
+                    <button 
+                        onClick={() => handlePageChange(currentPage - 1)} 
+                        disabled={currentPage <= 1}
+                        className="cta-button"
+                    >
+                        &larr; Previous
+                    </button>
+                    <span>
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button 
+                        onClick={() => handlePageChange(currentPage + 1)} 
+                        disabled={currentPage >= totalPages}
+                        className="cta-button"
+                    >
+                        Next &rarr;
+                    </button>
+                </div>
+            )}
+
             {reportData && (
                 <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
                     <EventReport ref={reportRef} reportData={reportData} />

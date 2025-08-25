@@ -92,7 +92,6 @@ export async function POST(request) {
                     <p><strong>Event:</strong> ${event.eventName}</p>
                     <p><strong>Date:</strong> ${fullDate} at ${time}</p>
                     <p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p>
-                    {/* --- FIX: Added the missing Ticket ID line --- */}
                     <p><strong>Ticket ID:</strong> ${ticketDoc._id.toString()}</p>
                     <img src="${qrCodeDataUrl}" alt="QR Code for ticket ${ticketDoc._id}" />
                 </div>
