@@ -43,8 +43,18 @@ export async function POST(request) {
             if (event.ticketsSold + totalTicketsRequested > event.ticketCount) {
                 throw new Error(`Not enough tickets available.`);
             }
-            event.ticketsSold += totalTicketsRequested;
-            await event.save({ session });
+
+            // --- FIX: Replaced the simple .save() with a robust, atomic update to prevent race conditions ---
+            const updateResult = await Event.updateOne(
+                { _id: event._id, __v: event.__v }, // Check for ID and version
+                { $inc: { ticketsSold: totalTicketsRequested } } // Safely increment the count
+            ).session(session);
+
+            // If nothing was modified, it means the version changed, indicating a race condition
+            if (updateResult.modifiedCount === 0) {
+                throw new Error('High demand! The tickets you selected were just sold. Please try again.');
+            }
+            // --- End of Fix ---
 
             for (const ticketRequest of purchaseItem.tickets) {
                 const ticketOption = event.tickets.find(t => t.type === ticketRequest.name);
@@ -72,7 +82,6 @@ export async function POST(request) {
         const recipient = new Recipient(normalizedEmail);
         const firstEvent = await Event.findById(purchases[0].eventId).lean();
         
-        // --- FIX: Updated the logo URL to use your new custom domain ---
         const logoUrl = 'https://clicketickets.com/images/Clicketicketslogo.png';
         
         const emailHeader = `
