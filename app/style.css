@@ -2432,15 +2432,20 @@ input[type="time"]::-webkit-calendar-picker-indicator { /* Added time input type
 /* --- Homepage Pagination --- */
 
 .page-header-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 15px;
+  position: relative; /* Establishes a positioning context for the counter */
+  text-align: center; /* This will center your H1 title */
+  margin-bottom: 20px; /* Keeps the space below the heading */
+  padding: 10px 0; /* Adds some vertical space for alignment */
 }
 
 .pagination-meta {
+  /* These lines lift the counter out of the normal flow and place it on the right */
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+
+  /* Your original styling below (no changes here) */
   font-size: 0.9em;
   font-weight: 600;
   color: #333;
