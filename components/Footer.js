@@ -14,9 +14,9 @@ export default function Footer() {
                 {/* FIXED: Replaced 'Let's' with 'Let&apos;s' */}
                 <h4>Let&apos;s Connect</h4>
                 <div className="social-icons">
-                    <a href="#" aria-label="Facebook"><i className="fab fa-facebook-f"></i> Facebook</a>
+                    <a href="https://www.facebook.com/share/17696qpg7P/?mibextid=wwXIfr" aria-label="Facebook"><i className="fab fa-facebook-f"></i> Facebook</a>
                     <a href="https://www.instagram.com/clicketickets?igsh=MTR3OWd6c2FqbXp2dA==" aria-label="Instagram"><i className="fab fa-instagram"></i> Instagram</a>
-                    <a href="#" aria-label="Twitter"><i className="fab fa-twitter"></i> Twitter</a>
+                    <a href="#" aria-label="X"><i className="fab fa-twitter"></i> X</a>
                 </div>
             </div>
             <div className="footer-column">
