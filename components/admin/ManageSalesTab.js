@@ -1,8 +1,9 @@
+// components/admin/ManageSalesTab.js
+
 'use client';
 
 import { useState, useEffect } from 'react';
 
-// --- FIX #1: Add the authenticated fetch helper ---
 const authedFetch = async (url, options = {}) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     const headers = {
@@ -29,27 +30,25 @@ export default function ManageSalesTab() {
     const [selectedEvent, setSelectedEvent] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
-    // --- FIX #2: Add state for pagination ---
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    
+    // --- NEW: Add state to track which ticket is being refunded ---
+    const [refundingId, setRefundingId] = useState(null);
 
-    // Fetch events for the filter dropdown
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                // --- FIX #3: Use authedFetch to get events for the filter ---
                 const data = await authedFetch('/api/admin/events');
                 setEvents(data);
             } catch (error) {
                 console.error('Failed to fetch events for filter', error);
-                setError('Could not load events for the filter.'); // Show user-friendly error
+                setError('Could not load events for the filter.');
             }
         };
         fetchEvents();
     }, []);
 
-    // --- FIX #4: Update fetchSales to use authedFetch and handle pagination ---
     const fetchSales = async (page = 1) => {
         setLoading(true);
         setError(null);
@@ -65,25 +64,22 @@ export default function ManageSalesTab() {
             setTotalPages(data.totalPages || 1);
         } catch (error) {
             console.error('Failed to fetch sales', error);
-            setError(error.message); // Show the actual error from authedFetch
+            setError(error.message);
         } finally {
             setLoading(false);
         }
     };
     
-    // Fetch sales data when filters or page change
     useEffect(() => {
-        // Debounce search input
         const handler = setTimeout(() => {
-            fetchSales(1); // Reset to page 1 on new search/filter
+            fetchSales(1);
         }, 500);
         return () => clearTimeout(handler);
     }, [searchTerm, selectedEvent]);
 
-    // --- FIX #5: Add page change handler ---
     const handlePageChange = (newPage) => {
         if (newPage >= 1 && newPage <= totalPages) {
-            setCurrentPage(newPage); // Optimistically update page number
+            setCurrentPage(newPage);
             fetchSales(newPage);
         }
     };
@@ -93,13 +89,41 @@ export default function ManageSalesTab() {
         setSelectedEvent('');
     };
 
+    // --- NEW: Function to handle the refund process ---
+    const handleRefund = async (ticketId) => {
+        if (!window.confirm('Are you sure you want to refund this ticket? This action cannot be undone.')) {
+            return;
+        }
+
+        setRefundingId(ticketId);
+        try {
+            await authedFetch(`/api/refunds/${ticketId}`, {
+                method: 'POST',
+            });
+
+            // Update the UI instantly without a full refresh
+            setSales(currentSales => 
+                currentSales.map(sale => 
+                    sale._id === ticketId ? { ...sale, status: 'refunded' } : sale
+                )
+            );
+            alert('Ticket refunded successfully!');
+
+        } catch (error) {
+            console.error('Failed to refund ticket:', error);
+            alert(`Refund failed: ${error.message}`);
+        } finally {
+            setRefundingId(null);
+        }
+    };
+
+
     return (
         <div id="manage-sales" className="admin-section glass">
             <h2>Manage Sales & Refunds</h2>
             <p>View all ticket sales and issue refunds.</p>
 
             <div className="sales-controls">
-                {/* ... input, select, and button elements ... (no changes needed here) */}
                 <input 
                     type="search" 
                     id="sales-search-input" 
@@ -128,7 +152,6 @@ export default function ManageSalesTab() {
                 ) : (
                     sales.map(sale => (
                         <div key={sale._id} className="sales-card glass">
-                            {/* ... sales details ... (no changes needed here) */}
                             <div className="sales-details">
                                 <p><strong>Ticket ID:</strong> {sale._id}</p>
                                 <p><strong>Event:</strong> {sale.eventId?.eventName || 'N/A'}</p>
@@ -136,15 +159,23 @@ export default function ManageSalesTab() {
                                 <p><strong>Price:</strong> ${Number(sale.price).toFixed(2)}</p>
                                 <p><strong>Status:</strong> <span className={`status-indicator status-${sale.status}`}>{sale.status}</span></p>
                             </div>
+                            {/* --- MODIFIED: The sales actions div now contains the refund button logic --- */}
                             <div className="sales-actions">
-                                {/* Add Resend and Refund button logic here if needed */}
+                                {sale.status === 'valid' && (
+                                    <button
+                                        className="cta-button danger-btn"
+                                        onClick={() => handleRefund(sale._id)}
+                                        disabled={refundingId === sale._id}
+                                    >
+                                        {refundingId === sale._id ? 'Refunding...' : 'Refund Ticket'}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))
                 )}
             </div>
 
-            {/* --- FIX #6: Add pagination controls to the UI --- */}
             {!loading && !error && totalPages > 1 && (
                 <div className="pagination-controls">
                     <button 
@@ -169,3 +200,4 @@ export default function ManageSalesTab() {
         </div>
     );
 }
+// --- MODIFIED: The sales actions div now contains the refund button logic ---

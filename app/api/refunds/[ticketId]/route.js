@@ -11,42 +11,46 @@ export async function POST(request, { params }) {
     session.startTransaction();
 
     try {
-        // 1. Authenticate the user as an admin using our standard helper
         await requireAdmin();
-
         const { ticketId } = params;
 
-        // 2. Find the ticket within the transaction session
+        if (!mongoose.Types.ObjectId.isValid(ticketId)) {
+            return NextResponse.json({ message: 'Invalid Ticket ID format.' }, { status: 400 });
+        }
+
         const ticket = await Ticket.findById(ticketId).session(session);
 
         if (!ticket) {
-            throw new Error('Ticket not found.');
+            return NextResponse.json({ message: 'Ticket not found.' }, { status: 404 });
         }
 
-        // 3. Check if the ticket has already been refunded
         if (ticket.status === 'refunded') {
-            // Use a 409 Conflict status code for this case
-            return NextResponse.json({ message: 'This ticket has already been refunded.' }, { status: 409 });
+            return NextResponse.json({ message: 'This ticket has already been refunded.' }, { status: 400 });
         }
+        
+        // --- This is the critical check we added ---
+        if (ticket.status === 'checked-in') {
+            return NextResponse.json({ message: 'Cannot refund a ticket that has already been checked in.' }, { status: 400 });
+        }
+        // -------------------------------------------
 
-        // 4. Update the ticket status and decrement the event's ticketsSold count
         ticket.status = 'refunded';
         await ticket.save({ session });
 
         await Event.findByIdAndUpdate(
             ticket.eventId,
-            { $inc: { ticketsSold: -1 } }, // Safely decrement the count by 1
+            { $inc: { ticketsSold: -1 } },
             { session }
         );
 
-        // 5. If all operations succeed, commit the transaction
         await session.commitTransaction();
         
         return NextResponse.json({ message: 'Ticket successfully refunded.', ticket }, { status: 200 });
 
     } catch (error) {
-        // If any error occurs, abort the entire transaction
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         console.error("Error processing single ticket refund:", error);
 
         if (error.message.includes('Authentication') || error.message.includes('Forbidden')) {
@@ -55,7 +59,6 @@ export async function POST(request, { params }) {
         
         return NextResponse.json({ message: error.message || "Failed to process refund." }, { status: 500 });
     } finally {
-        // Always end the session
         session.endSession();
     }
 }

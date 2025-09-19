@@ -1,12 +1,11 @@
+// In your event refund API file (e.g., app/api/refunds/event/[eventId]/route.js)
+
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/dbConnect';
 import Event from '@/models/Event';
 import Ticket from '@/models/Ticket';
-import User from '@/models/User';
-import jwt from 'jsonwebtoken';
-// --- FIX: 'cookies' is no longer needed ---
-// import { cookies } from 'next/headers'; 
+import { requireAdmin } from '@/lib/auth'; // Using the simplified auth helper
 
 export async function POST(request, { params }) {
     await dbConnect();
@@ -15,62 +14,57 @@ export async function POST(request, { params }) {
 
     try {
         const { eventId } = params;
-
-        // --- Admin Authentication ---
         
-        // --- FIX START: Get token from Authorization header instead of cookies ---
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new Error('Unauthorized: Missing or invalid token.');
-        }
-        const token = authHeader.split(' ')[1];
-        // --- FIX END ---
-        
-        if (!token) {
-            throw new Error('Unauthorized');
-        }
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId).lean();
-        if (!user || user.role !== 'admin') {
-            throw new Error('Forbidden: Admins only.');
-        }
-        // --- End Authentication ---
+        // Admin Authentication (using your standard helper is cleaner)
+        await requireAdmin();
 
         const event = await Event.findById(eventId).session(session);
         if (!event) {
             throw new Error('Event not found.');
         }
 
-        const activeTickets = await Ticket.find({ eventId: eventId, status: 'active' }).session(session);
+        // --- FIX #1: Look for 'valid' tickets for consistency ---
+        const ticketsToRefund = await Ticket.find({ eventId: eventId, status: 'valid' }).session(session);
 
-        if (activeTickets.length === 0) {
+        if (ticketsToRefund.length === 0) {
             await session.abortTransaction();
             session.endSession();
-            return NextResponse.json({ message: 'No active tickets found for this event to refund.' }, { status: 404 });
+            return NextResponse.json({ message: 'No valid tickets found for this event to refund.' }, { status: 404 });
         }
 
+        // Update all valid tickets to 'refunded'
         await Ticket.updateMany(
-            { _id: { $in: activeTickets.map(t => t._id) } },
+            { _id: { $in: ticketsToRefund.map(t => t._id) } },
             { $set: { status: 'refunded' } },
             { session }
         );
 
-        event.ticketsSold = 0;
-        await event.save({ session });
+        // --- FIX #2: Correctly decrement the ticketsSold count ---
+        // Instead of setting to 0, we subtract the number of tickets we just refunded.
+        await Event.updateOne(
+            { _id: eventId },
+            { $inc: { ticketsSold: -ticketsToRefund.length } },
+            { session }
+        );
 
         await session.commitTransaction();
         
-        return NextResponse.json({ message: `Successfully refunded ${activeTickets.length} tickets for the event "${event.eventName}".` }, { status: 200 });
+        return NextResponse.json({ message: `Successfully refunded ${ticketsToRefund.length} tickets for the event "${event.eventName}".` }, { status: 200 });
 
     } catch (error) {
-        // Use optional chaining for abortTransaction to prevent errors if the session is already closed
-        await session.abortTransaction?.().catch(() => {});
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         console.error("Error processing event refund:", error);
-        // Ensure error.message is a string
+        
         const errorMessage = error instanceof Error ? error.message : "Failed to process event refund.";
+        
+        if (errorMessage.includes('Authentication') || errorMessage.includes('Forbidden')) {
+            return NextResponse.json({ message: errorMessage }, { status: 403 });
+        }
+
         return NextResponse.json({ message: errorMessage }, { status: 500 });
     } finally {
-        // Use optional chaining for endSession
-        session.endSession?.().catch(() => {});
+        session.endSession();
     }
 }
