@@ -1,3 +1,5 @@
+// app/api/tickets/checkin/route.js
+
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/dbConnect';
@@ -35,7 +37,7 @@ export async function POST(request) {
         ticket.checkedInBy = adminUser._id;
         await ticket.save();
 
-        // --- FIX: The success response now includes the ticketType ---
+        // --- MODIFIED: The success response now includes the ticketType ---
         return NextResponse.json({
             message: `Access Granted for ${ticket.customerFirstName} ${ticket.customerLastName}`,
             ticketType: ticket.ticketType

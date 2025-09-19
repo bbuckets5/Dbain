@@ -1,6 +1,8 @@
+// app/checkin/page.js
+
 'use client';
 
-import { useState, useEffect, useCallback } from 'react'; // Import useCallback
+import { useState, useEffect, useCallback } from 'react';
 import Modal from '@/components/modal';
 import { useRouter } from 'next/navigation';
 
@@ -28,21 +30,19 @@ export default function CheckinPage() {
     const [selectedEventId, setSelectedEventId] = useState('');
     const [stats, setStats] = useState(null);
     const [ticketId, setTicketId] = useState('');
-    const [scanResult, setScanResult] = useState({ 
+    const [scanResult, setScanResult] = useState({
         message: '<i class="fas fa-qrcode"></i> Select an event to begin',
-        type: 'info' 
+        type: 'info'
     });
     const [isLoading, setIsLoading] = useState(false);
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     const router = useRouter();
-
-    // --- FIX #1: Add state for the history list ---
     const [history, setHistory] = useState([]);
 
     const showCustomAlert = (title, message, navigateTo) => {
-        setModal({ 
-            isOpen: true, 
-            title, 
+        setModal({
+            isOpen: true,
+            title,
             message,
             onClose: () => {
                 setModal({ isOpen: false, title: '', message: '' });
@@ -57,10 +57,10 @@ export default function CheckinPage() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const data = await authedFetch('/api/events'); 
+                const data = await authedFetch('/api/events');
                 setEvents(data);
                 if (data.length === 0) {
-                     showCustomAlert('No Events Found', 'There are no events available for you to manage.');
+                    showCustomAlert('No Events Found', 'There are no events available for you to manage.');
                 }
             } catch (error) {
                 console.error('Failed to fetch events', error);
@@ -70,7 +70,7 @@ export default function CheckinPage() {
         fetchEvents();
     }, []);
 
-    // --- FIX #2: Create a reusable function to fetch history ---
+    // Create a reusable function to fetch history
     const fetchHistory = useCallback(async () => {
         if (!selectedEventId) return;
         try {
@@ -103,10 +103,10 @@ export default function CheckinPage() {
                 showCustomAlert('Error', `Could not load stats: ${error.message}`);
             }
         };
-        
+
         fetchStatsAndHistory();
 
-        // --- FIX #3: Add auto-refreshing logic for the history feed ---
+        // Add auto-refreshing logic for the history feed
         const intervalId = setInterval(fetchHistory, 5000); // Refresh every 5 seconds
 
         // Cleanup function to stop the interval when the component unmounts or the event changes
@@ -130,12 +130,15 @@ export default function CheckinPage() {
                 body: { ticketId, eventId: selectedEventId }
             });
 
-            setScanResult({ message: `<i class="fas fa-check-circle"></i> ${result.message || 'Valid Ticket'}`, type: 'success' });
+            // --- CHANGE #1: The success message now includes the ticket type ---
+            setScanResult({
+                message: `<i class="fas fa-check-circle"></i> ${result.message} (${result.ticketType})`,
+                type: 'success'
+            });
+
             const latestStats = await authedFetch(`/api/checkin/stats/${selectedEventId}`);
             setStats(latestStats);
-
-            // --- FIX #4: Immediately refresh history after a successful check-in ---
-            await fetchHistory();
+            await fetchHistory(); // Immediately refresh history
 
         } catch (error) {
             console.error('Check-in error:', error);
@@ -157,7 +160,6 @@ export default function CheckinPage() {
     return (
         <>
             <h1>Event Check-in</h1>
-            {/* ... event selector and stats display ... (no changes here) */}
             <p className="form-description">First, select an event. Then, scan tickets to check attendees in.</p>
             <div className="event-selector-container glass">
                 <label htmlFor="event-selector">Select an Event:</label>
@@ -177,10 +179,8 @@ export default function CheckinPage() {
                         <p>Tickets Checked In: <span>{stats.checkedInCount}</span></p>
                         <p>Remaining Capacity: <span>{stats.totalTickets - stats.checkedInCount}</span></p>
                     </div>
-
                     <div className="checkin-scanner-area">
-                       {/* ... scanner form ... (no changes here) */}
-                       <div id="scan-result-display" className={`scan-result ${scanResult.type}`} dangerouslySetInnerHTML={{ __html: scanResult.message }}></div>
+                        <div id="scan-result-display" className={`scan-result ${scanResult.type}`} dangerouslySetInnerHTML={{ __html: scanResult.message }}></div>
                         <form onSubmit={handleCheckin}>
                             <input type="text" id="ticket-id-input" placeholder="Scan ticket here..." value={ticketId} onChange={(e) => setTicketId(e.target.value)} autoFocus />
                             <button id="manual-checkin-btn" className="cta-button" type="submit" disabled={isLoading}>{isLoading ? 'Checking in...' : 'Manual Check-in'}</button>
@@ -188,8 +188,7 @@ export default function CheckinPage() {
                     </div>
                 </div>
             )}
-            
-            {/* --- FIX #5: Add the JSX to display the live history feed --- */}
+
             {selectedEventId && (
                 <div className="checkin-history-container glass">
                     <h2>Recent Check-ins</h2>
@@ -199,6 +198,8 @@ export default function CheckinPage() {
                                 <li key={ticket._id} className="history-item">
                                     <span className="name">
                                         {ticket.customerFirstName} {ticket.customerLastName}
+                                        {/* --- CHANGE #2: The ticket type is now shown in the history list --- */}
+                                        <span className="ticket-type">({ticket.ticketType})</span>
                                     </span>
                                     <span className="time">
                                         Checked in at {new Date(ticket.checkedInAt).toLocaleTimeString()}
@@ -215,11 +216,11 @@ export default function CheckinPage() {
                 </div>
             )}
 
-            <Modal 
-                isOpen={modal.isOpen} 
-                title={modal.title} 
-                message={modal.message} 
-                onClose={modal.onClose} 
+            <Modal
+                isOpen={modal.isOpen}
+                title={modal.title}
+                message={modal.message}
+                onClose={modal.onClose}
             />
         </>
     );
