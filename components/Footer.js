@@ -15,7 +15,7 @@ export default function Footer() {
                 <h4>Let&apos;s Connect</h4>
                 <div className="social-icons">
                     <a href="#" aria-label="Facebook"><i className="fab fa-facebook-f"></i> Facebook</a>
-                    <a href="#" aria-label="Instagram"><i className="fab fa-instagram"></i> Instagram</a>
+                    <a href="https://www.instagram.com/clicketickets?igsh=MTR3OWd6c2FqbXp2dA==" aria-label="Instagram"><i className="fab fa-instagram"></i> Instagram</a>
                     <a href="#" aria-label="Twitter"><i className="fab fa-twitter"></i> Twitter</a>
                 </div>
             </div>
