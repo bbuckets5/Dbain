@@ -1,3 +1,5 @@
+// app/api/purchase-tickets/route.js
+
 import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/dbConnect';
@@ -8,6 +10,16 @@ import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 import qrcode from 'qrcode';
 import { toDate } from 'date-fns-tz';
 import { getLocalEventDate } from '@/lib/dateUtils';
+// --- NEW: Import Cloudinary and a helper for streaming ---
+import { v2 as cloudinary } from 'cloudinary';
+import streamifier from 'streamifier';
+
+// --- NEW: Configure Cloudinary with your credentials ---
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export async function POST(request) {
     await dbConnect();
@@ -40,21 +52,18 @@ export async function POST(request) {
             }
 
             const totalTicketsRequested = purchaseItem.tickets.reduce((sum, t) => sum + t.quantity, 0);
-            if (event.ticketsSold + totalTicketsRequested > event.ticketCount) {
-                throw new Error(`Not enough tickets available.`);
-            }
-
-            // --- FIX: Replaced the simple .save() with a robust, atomic update to prevent race conditions ---
+            
             const updateResult = await Event.updateOne(
-                { _id: event._id, __v: event.__v }, // Check for ID and version
-                { $inc: { ticketsSold: totalTicketsRequested } } // Safely increment the count
+                { 
+                    _id: event._id, 
+                    $expr: { $lte: [ { $add: ["$ticketsSold", totalTicketsRequested] }, "$ticketCount" ] }
+                },
+                { $inc: { ticketsSold: totalTicketsRequested } }
             ).session(session);
 
-            // If nothing was modified, it means the version changed, indicating a race condition
             if (updateResult.modifiedCount === 0) {
-                throw new Error('High demand! The tickets you selected were just sold. Please try again.');
+                throw new Error('Not enough tickets available or high demand. Please try again.');
             }
-            // --- End of Fix ---
 
             for (const ticketRequest of purchaseItem.tickets) {
                 const ticketOption = event.tickets.find(t => t.type === ticketRequest.name);
@@ -77,13 +86,13 @@ export async function POST(request) {
         const savedTicketDocs = await Ticket.insertMany(createdTickets, { session });
         await session.commitTransaction();
 
+        // --- MODIFIED SECTION START: Generate, upload, and update QR codes after purchase ---
         const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY });
         const sender = new Sender(process.env.FROM_EMAIL_ADDRESS, "Click eTickets");
         const recipient = new Recipient(normalizedEmail);
         const firstEvent = await Event.findById(purchases[0].eventId).lean();
         
         const logoUrl = 'https://clicketickets.com/images/Clicketicketslogo.png';
-        
         const emailHeader = `
             <div style="text-align: center; margin-bottom: 30px;">
                 <img src="${logoUrl}" alt="Click eTickets Logo" style="width: 200px; height: auto;" />
@@ -94,33 +103,45 @@ export async function POST(request) {
         for (const ticketDoc of savedTicketDocs) {
             const event = await Event.findById(ticketDoc.eventId).lean();
             const { fullDate, time } = getLocalEventDate(event);
-            const qrCodeDataUrl = await qrcode.toDataURL(ticketDoc._id.toString(), { width: 150, margin: 2 });
             
+            // 1. Generate QR code as an image buffer
+            const qrCodeBuffer = await qrcode.toBuffer(ticketDoc._id.toString(), { width: 200, margin: 1 });
+
+            // 2. Upload the buffer to Cloudinary
+            const uploadPromise = new Promise((resolve, reject) => {
+                const uploadStream = cloudinary.uploader.upload_stream(
+                    { folder: "qrcodes", public_id: ticketDoc._id.toString() },
+                    (error, result) => {
+                        if (error) reject(error);
+                        else resolve(result);
+                    }
+                );
+                streamifier.createReadStream(qrCodeBuffer).pipe(uploadStream);
+            });
+            const uploadResult = await uploadPromise;
+            const qrCodeUrl = uploadResult.secure_url;
+
+            // 3. Save the new Cloudinary URL to the ticket in the database
+            await Ticket.findByIdAndUpdate(ticketDoc._id, { qrCodeUrl: qrCodeUrl });
+
+            // 4. Use the public Cloudinary URL in the email
             ticketsHtml += `
                 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
                     <p><strong>Event:</strong> ${event.eventName}</p>
                     <p><strong>Date:</strong> ${fullDate} at ${time}</p>
                     <p><strong>Ticket Type:</strong> ${ticketDoc.ticketType}</p>
                     <p><strong>Ticket ID:</strong> ${ticketDoc._id.toString()}</p>
-                    <img src="${qrCodeDataUrl}" alt="QR Code for ticket ${ticketDoc._id}" />
+                    <img src="${qrCodeUrl}" alt="QR Code for ticket ${ticketDoc._id}" />
                 </div>
             `;
         }
+        // --- MODIFIED SECTION END ---
 
         let emailBody;
         if (userId) {
-            emailBody = `
-                <h2>Purchase Confirmation</h2>
-                <p>Hello ${customerInfo.firstName}, thank you for your purchase!</p>
-                <p>Your tickets are included below. They have also been saved to your account and can be viewed anytime in the "My Tickets" section of our website.</p>
-                ${ticketsHtml}
-            `;
+            emailBody = `<h2>Purchase Confirmation</h2><p>Hello ${customerInfo.firstName}, thank you for your purchase!</p><p>Your tickets are included below. They have also been saved to your account and can be viewed anytime in the "My Tickets" section of our website.</p>${ticketsHtml}`;
         } else {
-            emailBody = `
-                <h2>Your Tickets</h2>
-                <p>Hello ${customerInfo.firstName}, thank you for your purchase! Your tickets are attached below.</p>
-                ${ticketsHtml}
-            `;
+            emailBody = `<h2>Your Tickets</h2><p>Hello ${customerInfo.firstName}, thank you for your purchase! Your tickets are attached below.</p>${ticketsHtml}`;
         }
 
         const emailHtmlContent = emailHeader + emailBody;
