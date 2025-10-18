@@ -1,9 +1,9 @@
 /* --- OPTION 2: BRIGHT THEME --- */
 /*
 ================================================================================
- File: style.css
- Project: Click eTickets
- Description: Master stylesheet for the Click eTickets website.
+File: style.css
+Project: Click eTickets
+Description: Master stylesheet for the Click eTickets website.
 ================================================================================
 */
 
@@ -2479,4 +2479,33 @@ input[type="time"]::-webkit-calendar-picker-indicator { /* Added time input type
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+/* ================================================================================
+  SECTION: Mobile Hotfixes
+================================================================================
+*/
+
+/* FIX: Homepage title/counter overlap on mobile */
+@media (max-width: 768px) {
+
+  .page-header-controls {
+    /* Stack items vertically */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .page-header-controls .page-title {
+    margin-bottom: 0;
+  }
+
+  .pagination-meta {
+    /* Reset positioning to stack normally */
+    position: static;
+    transform: none;
+    width: 100%;
+    text-align: center;
+  }
 }
