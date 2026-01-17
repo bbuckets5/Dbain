@@ -7,7 +7,8 @@ export async function GET(request, { params }) {
     await dbConnect();
 
     try {
-        const eventId = params['event-id'];
+        // --- FIX: Await params for Next.js 15 compatibility ---
+        const { 'event-id': eventId } = await params;
 
         // 1. Check if the provided ID is in a valid format before querying the database.
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
