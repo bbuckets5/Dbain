@@ -1,15 +1,19 @@
-// In app/events/[event-id]/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react'; // --- FIX: Import 'use' hook ---
 import Link from 'next/link';
 import Image from 'next/image';
 import TicketManager from '@/components/TicketManager';
-import { getLocalEventDate } from '@/lib/dateUtils'; // Use the corrected utility
+import { getLocalEventDate } from '@/lib/dateUtils';
 import { toDate } from 'date-fns-tz';
 
 export default function EventDetailsPage({ params }) {
-    const eventId = params['event-id'];
+    // --- FIX: Unwrap params using React.use() because params is a Promise in Next.js 15 ---
+    const resolvedParams = use(params);
+    
+    // Support multiple folder naming conventions just in case ([event-id], [id], etc.)
+    const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
+
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
