@@ -13,6 +13,21 @@ cloudinary.v2.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// --- SMART HELPER: Detects if a date is Daylight Savings (EDT) or Standard (EST) ---
+const getEasternOffset = (dateString) => {
+    // Create a date object for noon UTC on that day
+    const testDate = new Date(`${dateString}T12:00:00Z`);
+    
+    // Ask the system: "What is the timezone name for New York on this specific date?"
+    const timeZoneString = new Intl.DateTimeFormat('en-US', { 
+        timeZone: 'America/New_York', 
+        timeZoneName: 'short' 
+    }).format(testDate);
+
+    // If it says "EDT" (Eastern Daylight Time), use -04:00. Otherwise -05:00.
+    return timeZoneString.includes('EDT') ? '-04:00' : '-05:00';
+};
+
 export async function GET(request, { params }) {
     await dbConnect();
     try {
@@ -67,9 +82,10 @@ export async function PUT(request, { params }) {
             }
         });
         
-        // Handle timezone for date
+        // --- FIX: Use Smart Offset Helper for Date Updates ---
         if (updateData.eventDate && updateData.eventTime) {
-            updateData.eventDate = new Date(`${updateData.eventDate}T${updateData.eventTime}:00.000-04:00`);
+            const offset = getEasternOffset(updateData.eventDate);
+            updateData.eventDate = new Date(`${updateData.eventDate}T${updateData.eventTime}:00.000${offset}`);
         }
 
         // Process ticket types

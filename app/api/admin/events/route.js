@@ -11,13 +11,27 @@ cloudinary.v2.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// --- SMART HELPER: Detects if a date is Daylight Savings (EDT) or Standard (EST) ---
+const getEasternOffset = (dateString) => {
+    // Create a date object for noon UTC on that day
+    const testDate = new Date(`${dateString}T12:00:00Z`);
+    
+    // Ask the system: "What is the timezone name for New York on this specific date?"
+    const timeZoneString = new Intl.DateTimeFormat('en-US', { 
+        timeZone: 'America/New_York', 
+        timeZoneName: 'short' 
+    }).format(testDate);
+
+    // If it says "EDT" (Eastern Daylight Time), use -04:00. Otherwise -05:00.
+    return timeZoneString.includes('EDT') ? '-04:00' : '-05:00';
+};
+
 export async function GET(request) {
     await dbConnect();
 
     try {
         await requireAdmin();
 
-        // Fetch ALL approved events (past + future)
         const events = await Event.find({ status: 'approved' })
             .sort({ eventDate: 1 })
             .lean();
@@ -33,16 +47,13 @@ export async function GET(request) {
     }
 }
 
-// --- FIX: Add POST method for Admins to create events directly ---
 export async function POST(request) {
     await dbConnect();
 
     try {
-        const adminUser = await requireAdmin(); // Get the logged-in admin's details
-
+        const adminUser = await requireAdmin();
         const form = await request.formData();
 
-        // Extract fields
         const eventName = form.get('eventName')?.toString().trim();
         const eventDateRaw = form.get('eventDate')?.toString().trim();
         const eventTime = form.get('eventTime')?.toString().trim();
@@ -55,12 +66,10 @@ export async function POST(request) {
         const prices = form.getAll('ticket_price[]').map(v => v.toString());
         const includes = form.getAll('ticket_includes[]').map(v => v.toString());
 
-        // Validate essential fields
         if (!eventName || !eventDateRaw || !eventTime || !eventLocation || !ticketCountRaw || !flyer) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
         }
 
-        // Process tickets
         const ticketCount = Number(ticketCountRaw);
         const ticketTypes = types.map((label, i) => ({
             type: label,
@@ -68,7 +77,6 @@ export async function POST(request) {
             includes: (includes[i] ?? '').toString(),
         }));
 
-        // Upload Flyer to Cloudinary
         const arrayBuffer = await flyer.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const uploadResult = await new Promise((resolve, reject) => {
@@ -82,7 +90,6 @@ export async function POST(request) {
             stream.end(buffer);
         });
 
-        // Generate placeholders
         const flyerImageThumbnailPath = cloudinary.v2.url(uploadResult.public_id, {
             width: 800, crop: 'scale', format: 'webp', quality: 'auto:good',
         });
@@ -90,16 +97,16 @@ export async function POST(request) {
             width: 20, crop: 'scale', format: 'webp', quality: 'auto:low', effect: 'blur:2000',
         });
 
-        const eventDate = new Date(`${eventDateRaw}T${eventTime}:00.000-04:00`);
+        // --- FIX: Use the smart helper to get the correct offset automatically ---
+        const offset = getEasternOffset(eventDateRaw);
+        const eventDate = new Date(`${eventDateRaw}T${eventTime}:00.000${offset}`);
 
-        // Create the Event
-        // We use the Admin's own name for the "Submitter" fields to satisfy the database schema
         const newEvent = new Event({
             firstName: adminUser.firstName || 'System',
             lastName: adminUser.lastName || 'Admin',
             businessName: 'Click eTickets Admin',
             submitterEmail: adminUser.email,
-            phone: 'N/A', // Admins don't need to provide a phone
+            phone: 'N/A',
             eventName,
             eventDescription,
             eventDate,
@@ -111,7 +118,7 @@ export async function POST(request) {
             flyerPublicId: uploadResult.public_id,
             flyerImageThumbnailPath,
             flyerImagePlaceholderPath,
-            status: 'approved', // Auto-approve admin events
+            status: 'approved',
         });
 
         await newEvent.save();
