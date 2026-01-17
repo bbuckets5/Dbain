@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
 import Ticket from '@/models/Ticket';
-import User from '@/models/User'; // Needed for populating the admin's name
+import User from '@/models/User';
 import { requireAdmin } from '@/lib/auth';
 import mongoose from 'mongoose';
 
@@ -9,27 +9,25 @@ export async function GET(request, { params }) {
     await dbConnect();
 
     try {
-        // 1. Ensure the user is a verified admin/staff member.
         await requireAdmin();
 
-        const { eventId } = params;
+        // --- FIX: Await params for Next.js 15 ---
+        const { eventId } = await params;
 
-        // 2. Check if the provided Event ID is in a valid format.
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
             return NextResponse.json({ message: 'Invalid Event ID format.' }, { status: 400 });
         }
 
-        // 3. Find the most recent check-ins for this event.
         const recentCheckIns = await Ticket.find({ 
             eventId: eventId, 
             status: 'checked-in' 
         })
-        .sort({ checkedInAt: -1 }) // Sort by check-in time, newest first
-        .limit(50) // Limit to the 50 most recent check-ins for performance
+        .sort({ checkedInAt: -1 })
+        .limit(50)
         .populate({
-            path: 'checkedInBy',   // Find the User document for the staff member
+            path: 'checkedInBy',
             model: User,
-            select: 'firstName lastName' // Only get their first and last name
+            select: 'firstName lastName'
         })
         .lean();
 

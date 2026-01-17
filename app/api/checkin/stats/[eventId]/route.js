@@ -9,23 +9,20 @@ export async function GET(request, { params }) {
     await dbConnect();
 
     try {
-        // 1. Use our standard helper to ensure the user is a verified admin.
         await requireAdmin();
 
-        const { eventId } = params;
+        // --- FIX: Await params for Next.js 15 ---
+        const { eventId } = await params;
 
-        // 2. Check if the provided ID is in a valid format.
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
             return NextResponse.json({ message: 'Invalid Event ID format.' }, { status: 400 });
         }
 
-        // 3. Find the event to get its name and total tickets sold.
         const event = await Event.findById(eventId).lean();
         if (!event) {
             return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
         }
 
-        // 4. Efficiently count only the tickets that are "checked-in" for this event.
         const checkedInCount = await Ticket.countDocuments({ 
             eventId: eventId, 
             status: 'checked-in' 
