@@ -16,9 +16,10 @@ cloudinary.v2.config({
 export async function GET(request, { params }) {
     await dbConnect();
     try {
-        // --- FIX: Added security to ensure only admins can fetch event data for editing ---
         await requireAdmin();
-        const { eventId } = params;
+        
+        // --- FIX: In Next.js 15, params must be awaited ---
+        const { eventId } = await params;
 
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
             return NextResponse.json({ message: 'Invalid Event ID format.' }, { status: 400 });
@@ -38,12 +39,13 @@ export async function GET(request, { params }) {
     }
 }
 
-// --- FIX: The PUT function is completely rewritten to handle FormData and file uploads ---
 export async function PUT(request, { params }) {
     await dbConnect();
     try {
         await requireAdmin();
-        const { eventId } = params;
+        
+        // --- FIX: In Next.js 15, params must be awaited ---
+        const { eventId } = await params;
         
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
             return NextResponse.json({ message: 'Invalid Event ID format.' }, { status: 400 });
@@ -125,7 +127,9 @@ export async function DELETE(request, { params }) {
     await dbConnect();
     try {
         await requireAdmin();
-        const { eventId } = params;
+        
+        // --- FIX: In Next.js 15, params must be awaited ---
+        const { eventId } = await params;
 
         if (!mongoose.Types.ObjectId.isValid(eventId)) {
             return NextResponse.json({ message: 'Invalid Event ID format.' }, { status: 400 });
