@@ -7,24 +7,29 @@ export async function GET(request, { params }) {
     await dbConnect();
 
     try {
-        // --- FIX: Await params for Next.js 15 compatibility ---
-        const { 'event-id': eventId } = await params;
+        // --- FIX: Bulletproof ID Extraction for Next.js 15 ---
+        // 1. Await the params (Required for Next.js 15)
+        const resolvedParams = await params;
+        
+        // 2. Try ALL possible parameter names to prevent "undefined" errors
+        // This works regardless of if you named the folder [id], [eventId], or [event-id]
+        const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
 
-        // 1. Check if the provided ID is in a valid format before querying the database.
-        if (!mongoose.Types.ObjectId.isValid(eventId)) {
-            return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
+        console.log("API Fetching Event ID:", eventId); // This helps debug in Vercel logs
+
+        // 3. Validate the ID format
+        if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+            return NextResponse.json({ message: 'Invalid or missing Event ID.' }, { status: 400 });
         }
 
-        // 2. Find the event by its ID, but only if its status is 'approved'.
-        // This combines the find and the status check into one efficient database call.
+        // 4. Find the event
         const event = await Event.findOne({ 
             _id: eventId, 
             status: 'approved' 
         });
 
-        // If no event is found (either it doesn't exist or isn't approved), return 404.
         if (!event) {
-            return NextResponse.json({ message: 'Event not found or is not currently active.' }, { status: 404 });
+            return NextResponse.json({ message: 'Event not found or not active.' }, { status: 404 });
         }
 
         return NextResponse.json(event, { status: 200 });
