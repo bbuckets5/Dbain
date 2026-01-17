@@ -29,10 +29,6 @@ export default function AddNewEventTab({ onEventAdded }) {
         setMessage(null);
         const formData = new FormData(event.target);
         
-        {/* ++ THIS IS THE CHANGE FOR STEP 2 ++ */}
-        // Remove the old way of sending tickets
-        // formData.append('tickets', JSON.stringify(ticketTypes));
-
         // Loop through the state and append each piece of ticket data correctly
         ticketTypes.forEach(ticket => {
             formData.append('ticket_type[]', ticket.label);
@@ -41,19 +37,24 @@ export default function AddNewEventTab({ onEventAdded }) {
         });
         
         try {
-            const response = await fetch('/api/submit', {
+            // --- FIX: Send to the ADMIN API, not the public one ---
+            const token = localStorage.getItem('authToken');
+            const response = await fetch('/api/admin/events', {
                 method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}` // We need to verify you are admin
+                },
                 body: formData,
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || 'Submission failed');
             
-            setMessage({ type: 'success', text: 'Success! Event submitted.' });
-            event.target.reset(); // Clear the form
-            setTicketTypes([{ label: '', price: '', includes: '' }]); // Reset tickets
+            setMessage({ type: 'success', text: 'Success! Event created and approved.' });
+            event.target.reset(); 
+            setTicketTypes([{ label: '', price: '', includes: '' }]); 
             
             if (onEventAdded) {
-                setTimeout(() => onEventAdded(), 2000); // Switch back to events list after 2 seconds
+                setTimeout(() => onEventAdded(), 2000); 
             }
 
         } catch (err) {
