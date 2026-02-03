@@ -4,37 +4,39 @@ import dbConnect from '../lib/dbConnect';
 import Event from '../models/Event';
 import { getLocalEventDate } from '../lib/dateUtils';
 
-// --- FIX: Add searchParams to the function to read the page number from the URL ---
-export default async function HomePage({ searchParams }) {
+// This is a Server Component that runs directly on the server
+export default async function HomePage(props) {
+    // Unwrap searchParams for Next.js 15+ support
+    const searchParams = await props.searchParams;
+    
     await dbConnect();
     
-    // --- FIX: Pagination Logic ---
-    const page = parseInt(searchParams.page) || 1;
-    const limit = 9; // Show 9 events per page as requested
+    const page = parseInt(searchParams?.page) || 1;
+    const limit = 9; 
     const skip = (page - 1) * limit;
 
+    // --- QUERY: Show ALL approved events (Past & Future) ---
     const query = { status: 'approved' };
 
-    // Get the total count of approved events for the counter and total pages
+    // Get stats
     const totalEvents = await Event.countDocuments(query);
     const totalPages = Math.ceil(totalEvents / limit);
 
-    // Fetch only the 9 events for the current page
+    // Fetch events
     const events = await Event.find(query)
-        .sort({ eventDate: 1 })
+        // Sort by Date DESCENDING (-1) so newest/future events are at the top
+        .sort({ eventDate: -1 }) 
         .skip(skip)
         .limit(limit)
         .lean();
 
-    // --- FIX: Calculate the item numbers for the counter text ---
     const startItem = totalEvents > 0 ? skip + 1 : 0;
     const endItem = skip + events.length;
 
     return (
         <main className="container">
-            {/* --- FIX: Container for title and the new counter --- */}
             <div className="page-header-controls">
-                <h1 className="page-title">Upcoming Events</h1>
+                <h1 className="page-title">Browse Events</h1>
                 {totalEvents > 0 && (
                     <div className="pagination-meta">
                         Showing {startItem} - {endItem} of {totalEvents} events
@@ -44,7 +46,9 @@ export default async function HomePage({ searchParams }) {
 
             <div id="event-list-container" className="event-grid">
                 {events.length === 0 ? (
-                    <p>No upcoming events at the moment.</p>
+                    <div style={{gridColumn: '1 / -1', textAlign: 'center', padding: '40px'}}>
+                        <p>No events found.</p>
+                    </div>
                 ) : (
                     events.map(event => {
                         const { shortDate, time } = getLocalEventDate(event);
@@ -67,6 +71,23 @@ export default async function HomePage({ searchParams }) {
                                         <i className="fas fa-clock"></i> {time}
                                     </p>
                                     <p><i className="fas fa-map-marker-alt"></i> {event.eventLocation}</p>
+                                    
+                                    {/* Reserved Seating Badge */}
+                                    {event.isReservedSeating && (
+                                        <span style={{
+                                            position: 'absolute', 
+                                            top: '10px', 
+                                            right: '10px', 
+                                            background: '#00d4ff', 
+                                            color: '#000', 
+                                            padding: '4px 8px', 
+                                            borderRadius: '4px',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            Reserved Seating
+                                        </span>
+                                    )}
                                 </div>
                             </Link>
                         );
@@ -74,7 +95,7 @@ export default async function HomePage({ searchParams }) {
                 )}
             </div>
             
-            {/* --- FIX: Add the pagination navigation links --- */}
+            {/* Pagination Controls */}
             {totalPages > 1 && (
                 <div className="pagination-nav">
                     {page > 1 ? (
