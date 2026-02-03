@@ -1,5 +1,23 @@
-// models/Event.js
 import mongoose from 'mongoose';
+
+// --- NEW: Seat Schema for Reserved Seating ---
+const SeatSchema = new mongoose.Schema({
+  section: { type: String, default: 'General' }, // e.g., "Orchestra", "Section 101"
+  row: { type: String, required: true },         // e.g., "A", "Front"
+  number: { type: String, required: true },      // e.g., "1", "101" (String for flexibility)
+  price: { type: Number, required: true, min: 0 },
+  status: { 
+    type: String, 
+    enum: ['available', 'held', 'sold', 'unavailable'], 
+    default: 'available' 
+  },
+  // For the "Hold" timer functionality
+  heldBy: { type: String }, // Stores a Session ID or Guest ID
+  holdExpires: { type: Date }, // When the hold is released
+  
+  // Who actually bought it
+  soldTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } 
+});
 
 const TicketOptionSchema = new mongoose.Schema(
   {
@@ -61,10 +79,15 @@ const EventSchema = new mongoose.Schema(
     flyerImagePlaceholderPath: { type: String, trim: true },
     flyerPublicId: { type: String, required: true, trim: true },
 
+    // --- OLD: General Admission Options ---
     tickets: {
       type: [TicketOptionSchema],
       default: [],
     },
+
+    // --- NEW: Reserved Seating Fields ---
+    isReservedSeating: { type: Boolean, default: false }, // The "Toggle Switch"
+    seats: { type: [SeatSchema], default: [] },           // The array of all generated seats
 
     status: {
       type: String,
@@ -94,4 +117,3 @@ EventSchema.path('eventDescription').set((v) => {
 });
 
 export default mongoose.models.Event || mongoose.model('Event', EventSchema);
-

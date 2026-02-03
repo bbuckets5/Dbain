@@ -13,16 +13,13 @@ cloudinary.v2.config({
 
 // --- SMART HELPER: Detects if a date is Daylight Savings (EDT) or Standard (EST) ---
 const getEasternOffset = (dateString) => {
-    // Create a date object for noon UTC on that day
     const testDate = new Date(`${dateString}T12:00:00Z`);
     
-    // Ask the system: "What is the timezone name for New York on this specific date?"
     const timeZoneString = new Intl.DateTimeFormat('en-US', { 
         timeZone: 'America/New_York', 
         timeZoneName: 'short' 
     }).format(testDate);
 
-    // If it says "EDT" (Eastern Daylight Time), use -04:00. Otherwise -05:00.
     return timeZoneString.includes('EDT') ? '-04:00' : '-05:00';
 };
 
@@ -54,29 +51,61 @@ export async function POST(request) {
         const adminUser = await requireAdmin();
         const form = await request.formData();
 
+        // 1. Extract Basic Fields
         const eventName = form.get('eventName')?.toString().trim();
         const eventDateRaw = form.get('eventDate')?.toString().trim();
         const eventTime = form.get('eventTime')?.toString().trim();
         const eventLocation = form.get('eventLocation')?.toString().trim();
         const eventDescription = form.get('eventDescription')?.toString().trim();
-        const ticketCountRaw = form.get('ticketCount')?.toString().trim();
         const flyer = form.get('flyer');
         
-        const types = form.getAll('ticket_type[]').map(v => v.toString());
-        const prices = form.getAll('ticket_price[]').map(v => v.toString());
-        const includes = form.getAll('ticket_includes[]').map(v => v.toString());
+        // 2. Check for Reserved Seating Flag
+        const isReservedSeating = form.get('isReservedSeating') === 'true';
 
-        if (!eventName || !eventDateRaw || !eventTime || !eventLocation || !ticketCountRaw || !flyer) {
+        if (!eventName || !eventDateRaw || !eventTime || !eventLocation || !flyer) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
         }
 
-        const ticketCount = Number(ticketCountRaw);
-        const ticketTypes = types.map((label, i) => ({
-            type: label,
-            price: Number(prices[i] ?? 0),
-            includes: (includes[i] ?? '').toString(),
-        }));
+        let ticketCount = 0;
+        let ticketTypes = [];
+        let seats = [];
 
+        // 3. Logic Branch: Reserved Seating vs General Admission
+        if (isReservedSeating) {
+            // --- RESERVED SEATING LOGIC ---
+            const seatsConfigRaw = form.get('seats_config');
+            if (!seatsConfigRaw) {
+                return NextResponse.json({ message: 'Missing seating configuration.' }, { status: 400 });
+            }
+
+            try {
+                seats = JSON.parse(seatsConfigRaw);
+                // Override ticket count with the actual number of generated seats
+                ticketCount = seats.length;
+            } catch (err) {
+                return NextResponse.json({ message: 'Invalid seating configuration format.' }, { status: 400 });
+            }
+
+        } else {
+            // --- GENERAL ADMISSION LOGIC ---
+            const ticketCountRaw = form.get('ticketCount')?.toString().trim();
+            if (!ticketCountRaw) {
+                return NextResponse.json({ message: 'Total Ticket Count is required for General Admission.' }, { status: 400 });
+            }
+            ticketCount = Number(ticketCountRaw);
+
+            const types = form.getAll('ticket_type[]').map(v => v.toString());
+            const prices = form.getAll('ticket_price[]').map(v => v.toString());
+            const includes = form.getAll('ticket_includes[]').map(v => v.toString());
+
+            ticketTypes = types.map((label, i) => ({
+                type: label,
+                price: Number(prices[i] ?? 0),
+                includes: (includes[i] ?? '').toString(),
+            }));
+        }
+
+        // 4. Handle Image Upload
         const arrayBuffer = await flyer.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const uploadResult = await new Promise((resolve, reject) => {
@@ -97,10 +126,11 @@ export async function POST(request) {
             width: 20, crop: 'scale', format: 'webp', quality: 'auto:low', effect: 'blur:2000',
         });
 
-        // --- FIX: Use the smart helper to get the correct offset automatically ---
+        // 5. Handle Date & Time
         const offset = getEasternOffset(eventDateRaw);
         const eventDate = new Date(`${eventDateRaw}T${eventTime}:00.000${offset}`);
 
+        // 6. Create Event Object
         const newEvent = new Event({
             firstName: adminUser.firstName || 'System',
             lastName: adminUser.lastName || 'Admin',
@@ -113,7 +143,12 @@ export async function POST(request) {
             eventTime,
             eventLocation,
             ticketCount,
-            tickets: ticketTypes,
+            
+            // --- NEW: Dynamic Ticket Data ---
+            isReservedSeating,
+            tickets: ticketTypes, // Will be empty if Reserved Seating is ON
+            seats: seats,         // Will be empty if Reserved Seating is OFF
+            
             flyerImagePath: uploadResult.secure_url,
             flyerPublicId: uploadResult.public_id,
             flyerImageThumbnailPath,
