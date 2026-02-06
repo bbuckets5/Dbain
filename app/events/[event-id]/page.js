@@ -3,8 +3,8 @@
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation'; // --- NEW IMPORT ---
-import { useUser } from '@/components/UserContext'; // --- NEW IMPORT ---
+import { useRouter } from 'next/navigation'; 
+import { useUser } from '@/components/UserContext'; 
 import TicketManager from '@/components/TicketManager';
 import SeatingChart from '@/components/SeatingChart'; 
 import CountdownTimer from '@/components/CountdownTimer';
@@ -15,7 +15,6 @@ export default function EventDetailsPage({ params }) {
     const resolvedParams = use(params);
     const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
     
-    // --- Hooks for Cart & Navigation ---
     const router = useRouter();
     const { addToCart } = useUser();
 
@@ -25,20 +24,21 @@ export default function EventDetailsPage({ params }) {
     
     // --- Reserved Seating State ---
     const [selectedSeats, setSelectedSeats] = useState([]);
-    const [guestId, setGuestId] = useState(null); 
     const [earliestExpiration, setEarliestExpiration] = useState(null);
-
-    // 1. Initialize Guest ID
-    useEffect(() => {
-        let storedId = localStorage.getItem('guest_hold_id');
-        if (!storedId) {
-            storedId = 'guest_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('guest_hold_id', storedId);
+    
+    // --- FIX 1: Load Guest ID Immediately (Synchronously) ---
+    // This ensures we have the ID ready before we ever fetch the event data.
+    const [guestId] = useState(() => {
+        if (typeof window === 'undefined') return null;
+        let stored = localStorage.getItem('guest_hold_id');
+        if (!stored) {
+            stored = 'guest_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('guest_hold_id', stored);
         }
-        setGuestId(storedId);
-    }, []);
+        return stored;
+    });
 
-    // 2. Fetch Event Data
+    // 2. Fetch Event Data & RESTORE HOLDS
     const fetchEvent = async () => {
         try {
             const response = await fetch(`/api/events/${eventId}`);
@@ -48,6 +48,32 @@ export default function EventDetailsPage({ params }) {
             }
             const eventData = await response.json();
             setEvent(eventData);
+
+            // --- FIX 2: Check for "My Holds" on Refresh ---
+            if (eventData.isReservedSeating && guestId) {
+                // Find seats that are held by THIS user
+                const myHolds = eventData.seats.filter(s => 
+                    s.status === 'held' && s.heldBy === guestId
+                );
+
+                // Re-format them to match our selectedSeats structure
+                // We map 'holdExpires' from DB to 'expiresAt' for the UI
+                const restoredSelection = myHolds.map(s => ({
+                    ...s,
+                    expiresAt: s.holdExpires 
+                }));
+
+                // Only update if the length is different to prevent jitter
+                setSelectedSeats(prev => {
+                    // Simple check to avoid infinite loops if data is same
+                    if (prev.length === restoredSelection.length && 
+                        restoredSelection.every(r => prev.find(p => p._id === r._id))) {
+                        return prev;
+                    }
+                    return restoredSelection;
+                });
+            }
+
         } catch (err) {
             setError(err.message);
         } finally {
@@ -58,9 +84,10 @@ export default function EventDetailsPage({ params }) {
     useEffect(() => {
         if (!eventId) return;
         fetchEvent();
-        const interval = setInterval(fetchEvent, 30000);
+        // Poll frequently to keep map updated
+        const interval = setInterval(fetchEvent, 10000); 
         return () => clearInterval(interval);
-    }, [eventId]);
+    }, [eventId, guestId]); // Re-run if guestId changes (should only happen once)
 
     // --- Helper: Find the seat expiring soonest ---
     useEffect(() => {
@@ -75,47 +102,75 @@ export default function EventDetailsPage({ params }) {
     }, [selectedSeats]);
 
 
-    // 3. Handle Seat Click & Capture Expiration
+    // 3. Handle Seat Click (Toggle)
     const handleSeatSelect = async (seat) => {
         if (!guestId) return;
 
         const isSelected = selectedSeats.some(s => s._id === seat._id);
-        const action = isSelected ? 'release' : 'hold';
+        
+        // If it's already selected, we are RELEASING it.
+        if (isSelected) {
+            await releaseSeat(seat._id);
+        } else {
+            // Otherwise we are HOLDING it.
+            await holdSeat(seat);
+        }
+    };
 
-        if (action === 'hold' && selectedSeats.length >= 10) {
+    // --- FIX 3: Separate Hold Logic ---
+    const holdSeat = async (seat) => {
+        if (selectedSeats.length >= 10) {
             alert("You can only select up to 10 seats.");
             return;
         }
+
+        // Optimistic UI update (feels faster)
+        const optimisticSeat = { ...seat, status: 'held', heldBy: guestId };
+        setSelectedSeats(prev => [...prev, optimisticSeat]);
 
         try {
             const response = await fetch(`/api/events/${eventId}/hold`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    seatId: seat._id,
-                    action: action,
-                    holderId: guestId
-                })
+                body: JSON.stringify({ seatId: seat._id, action: 'hold', holderId: guestId })
             });
-
             const result = await response.json();
 
             if (!response.ok) {
-                alert(result.message); 
-                fetchEvent(); 
+                alert(result.message);
+                // Revert optimistic update
+                setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
+                fetchEvent();
                 return;
             }
 
-            if (action === 'hold') {
-                const seatWithTimer = { ...seat, expiresAt: result.expiresAt };
-                setSelectedSeats(prev => [...prev, seatWithTimer]);
-            } else {
-                setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
-            }
+            // Update with actual server expiration time
+            setSelectedSeats(prev => prev.map(s => 
+                s._id === seat._id ? { ...s, expiresAt: result.expiresAt } : s
+            ));
 
         } catch (err) {
-            console.error("Error holding seat:", err);
-            alert("Could not connect to server.");
+            console.error(err);
+            // Revert on error
+            setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
+        }
+    };
+
+    // --- FIX 4: Separate Release Logic (Called by X button or unclick) ---
+    const releaseSeat = async (seatId) => {
+        // Optimistic Remove
+        setSelectedSeats(prev => prev.filter(s => s._id !== seatId));
+
+        try {
+            await fetch(`/api/events/${eventId}/hold`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seatId: seatId, action: 'release', holderId: guestId })
+            });
+            // Fetch event to ensure map shows it as Green (Available) again
+            fetchEvent();
+        } catch (err) {
+            console.error("Error releasing seat:", err);
         }
     };
 
@@ -125,27 +180,21 @@ export default function EventDetailsPage({ params }) {
         fetchEvent(); 
     };
 
-    // --- 4. REAL CHECKOUT LOGIC ---
     const handleReservedAddToCart = () => {
         if (selectedSeats.length === 0) return;
-
-        // Loop through each selected seat and add it as a unique cart item
         selectedSeats.forEach(seat => {
             const cartItem = {
-                id: seat._id, // Use unique Seat ID
+                id: seat._id, 
                 name: `${seat.section} - Row ${seat.row} - Seat ${seat.number}`, 
                 quantity: 1,
                 price: seat.price,
                 eventName: event.eventName,
                 eventId: event._id,
-                // Extra metadata for the checkout process
                 isReserved: true,
                 expiresAt: seat.expiresAt 
             };
             addToCart(cartItem);
         });
-
-        // Redirect to checkout page
         router.push('/checkout');
     };
 
@@ -200,15 +249,24 @@ export default function EventDetailsPage({ params }) {
                                 selectedSeats={selectedSeats} 
                             />
                             
-                            {/* Simple list of selected seats (optional, as they are in the footer too) */}
+                            {/* --- FIX 5: Added an explicit 'X' button to the list --- */}
                             {selectedSeats.length > 0 && (
                                 <div style={{marginTop: '20px', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px'}}>
                                     <h4>Selected Tickets:</h4>
                                     <ul style={{listStyle: 'none', padding: 0, margin: '10px 0'}}>
                                         {selectedSeats.map(s => (
-                                            <li key={s._id} style={{display:'flex', justifyContent:'space-between', borderBottom:'1px solid rgba(255,255,255,0.1)', padding:'5px 0'}}>
+                                            <li key={s._id} style={{display:'flex', justifyContent:'space-between', alignItems: 'center', borderBottom:'1px solid rgba(255,255,255,0.1)', padding:'8px 0'}}>
                                                 <span>{s.section} - Row {s.row} - Seat {s.number}</span>
-                                                <span>${s.price.toFixed(2)}</span>
+                                                <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+                                                    <span>${s.price.toFixed(2)}</span>
+                                                    <button 
+                                                        onClick={() => releaseSeat(s._id)}
+                                                        style={{background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer', fontSize: '1.2rem'}}
+                                                        title="Remove from cart"
+                                                    >
+                                                        <i className="fas fa-times-circle"></i>
+                                                    </button>
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
@@ -227,71 +285,32 @@ export default function EventDetailsPage({ params }) {
                 </div>
             </div>
 
-            {/* --- STICKY CHECKOUT BAR --- */}
             {selectedSeats.length > 0 && (
                 <div className="sticky-checkout-bar">
                     <style jsx>{`
                         .sticky-checkout-bar {
-                            position: fixed;
-                            bottom: 0;
-                            left: 0;
-                            width: 100%;
-                            background: #1a1a1a;
-                            border-top: 1px solid #00d4ff;
-                            padding: 15px 20px;
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: center;
-                            z-index: 1000;
+                            position: fixed; bottom: 0; left: 0; width: 100%;
+                            background: #1a1a1a; border-top: 1px solid #00d4ff;
+                            padding: 15px 20px; display: flex; justify-content: space-between;
+                            align-items: center; z-index: 1000;
                             box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
                             animation: slideUp 0.3s ease-out;
                         }
-                        @keyframes slideUp {
-                            from { transform: translateY(100%); }
-                            to { transform: translateY(0); }
-                        }
-                        .bar-info {
-                            display: flex;
-                            gap: 20px;
-                            align-items: center;
-                        }
+                        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+                        .bar-info { display: flex; gap: 20px; align-items: center; }
                         .timer-box {
-                            background: rgba(255, 68, 68, 0.2);
-                            border: 1px solid #ff4444;
-                            color: #ff4444;
-                            padding: 5px 10px;
-                            border-radius: 4px;
-                            font-weight: bold;
-                            display: flex;
-                            align-items: center;
-                            gap: 8px;
+                            background: rgba(255, 68, 68, 0.2); border: 1px solid #ff4444; color: #ff4444;
+                            padding: 5px 10px; border-radius: 4px; font-weight: bold;
+                            display: flex; align-items: center; gap: 8px;
                         }
-                        .total-price {
-                            font-size: 1.2rem;
-                            font-weight: bold;
-                            color: white;
-                        }
+                        .total-price { font-size: 1.2rem; font-weight: bold; color: white; }
                         .checkout-btn {
-                            background: #00d4ff;
-                            color: black;
-                            border: none;
-                            padding: 10px 25px;
-                            border-radius: 25px;
-                            font-weight: bold;
-                            font-size: 1rem;
-                            cursor: pointer;
-                            transition: transform 0.2s;
+                            background: #00d4ff; color: black; border: none; padding: 10px 25px;
+                            border-radius: 25px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: transform 0.2s;
                         }
-                        .checkout-btn:hover {
-                            transform: scale(1.05);
-                            background: #66e0ff;
-                        }
+                        .checkout-btn:hover { transform: scale(1.05); background: #66e0ff; }
                         @media (max-width: 600px) {
-                            .sticky-checkout-bar {
-                                flex-direction: column;
-                                gap: 10px;
-                                text-align: center;
-                            }
+                            .sticky-checkout-bar { flex-direction: column; gap: 10px; text-align: center; }
                         }
                     `}</style>
 
@@ -300,10 +319,7 @@ export default function EventDetailsPage({ params }) {
                             <div className="timer-box">
                                 <i className="fas fa-stopwatch"></i>
                                 <span>Time Left: </span>
-                                <CountdownTimer 
-                                    targetDate={earliestExpiration} 
-                                    onExpire={handleExpired} 
-                                />
+                                <CountdownTimer targetDate={earliestExpiration} onExpire={handleExpired} />
                             </div>
                         )}
                         <div className="total-price">
