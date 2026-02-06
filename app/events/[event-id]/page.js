@@ -15,7 +15,6 @@ export default function EventDetailsPage({ params }) {
     const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
     
     const router = useRouter();
-    // --- REQUIREMENT: We need cart, addToCart, AND removeFromCart ---
     const { cart, addToCart, removeFromCart } = useUser();
 
     const [event, setEvent] = useState(null);
@@ -52,7 +51,10 @@ export default function EventDetailsPage({ params }) {
             setEvent(eventData);
 
             // --- RESTORE HOLDS ON REFRESH ---
-            if (eventData.isReservedSeating && guestId) {
+            // FIX: We check isInitialLoad.current. 
+            // This ensures we only sync with the server once (on load).
+            // After that, we trust your local clicks so seats don't disappear while you select them.
+            if (isInitialLoad.current && eventData.isReservedSeating && guestId) {
                 const now = new Date();
                 
                 // Find valid future holds belonging to this user
@@ -70,7 +72,6 @@ export default function EventDetailsPage({ params }) {
                 setSelectedSeats(restoredSelection);
                 
                 // --- SYNC TO CART IMMEDIATELY ---
-                // If we found holds on the server, ensure they are in the browser cart right now.
                 restoredSelection.forEach(seat => {
                     const isInCart = cart.some(item => item.id === seat._id);
                     if (!isInCart) {
@@ -83,25 +84,24 @@ export default function EventDetailsPage({ params }) {
             setError(err.message);
         } finally {
             setLoading(false);
-            isInitialLoad.current = false;
+            // Mark initial load as complete so the interval doesn't mess with us anymore
+            isInitialLoad.current = false; 
         }
     };
 
     useEffect(() => {
         if (!eventId) return;
         fetchEvent();
-        const interval = setInterval(fetchEvent, 5000); // Faster polling (5s) for snappy updates
+        const interval = setInterval(fetchEvent, 5000); 
         return () => clearInterval(interval);
     }, [eventId, guestId]); 
 
 
     // --- 3. GLOBAL CART SYNC LISTENER ---
-    // Watch the Global Cart. If the user removes an item there, release it here.
     useEffect(() => {
         if (loading || isInitialLoad.current || selectedSeats.length === 0) return;
 
         // Find seats that are currently selected (orange) BUT are missing from the Global Cart
-        // This means the user clicked "Remove" in the Navbar or Cart page
         const seatsRemovedFromCart = selectedSeats.filter(seat => 
             !cart.some(cartItem => cartItem.id === seat._id)
         );
@@ -109,7 +109,6 @@ export default function EventDetailsPage({ params }) {
         if (seatsRemovedFromCart.length > 0) {
             console.log("Detected removal from global cart:", seatsRemovedFromCart);
             seatsRemovedFromCart.forEach(seat => {
-                // Call our release logic
                 releaseSeat(seat._id);
             });
         }
@@ -238,7 +237,6 @@ export default function EventDetailsPage({ params }) {
         }
     };
 
-    // Simple navigation now, since items are already in cart
     const handleProceedToCheckout = () => {
         router.push('/checkout');
     };
@@ -319,7 +317,6 @@ export default function EventDetailsPage({ params }) {
                             tickets={event.tickets} 
                             eventName={event.eventName}
                             eventId={event._id}
-                            // Pass props needed for ticket manager...
                         />
                     )}
                 </div>
