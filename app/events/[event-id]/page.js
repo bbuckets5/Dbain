@@ -27,7 +27,6 @@ export default function EventDetailsPage({ params }) {
     const [earliestExpiration, setEarliestExpiration] = useState(null);
     
     // --- FIX 1: Load Guest ID Immediately (Synchronously) ---
-    // This ensures we have the ID ready before we ever fetch the event data.
     const [guestId] = useState(() => {
         if (typeof window === 'undefined') return null;
         let stored = localStorage.getItem('guest_hold_id');
@@ -51,13 +50,17 @@ export default function EventDetailsPage({ params }) {
 
             // --- FIX 2: Check for "My Holds" on Refresh ---
             if (eventData.isReservedSeating && guestId) {
-                // Find seats that are held by THIS user
+                const now = new Date();
+
+                // --- CRITICAL FIX: Only restore holds that represent FUTURE time ---
+                // If a hold is expired, ignore it. This stops the infinite alert loop.
                 const myHolds = eventData.seats.filter(s => 
-                    s.status === 'held' && s.heldBy === guestId
+                    s.status === 'held' && 
+                    s.heldBy === guestId &&
+                    new Date(s.holdExpires) > now // MUST be in the future
                 );
 
                 // Re-format them to match our selectedSeats structure
-                // We map 'holdExpires' from DB to 'expiresAt' for the UI
                 const restoredSelection = myHolds.map(s => ({
                     ...s,
                     expiresAt: s.holdExpires 
@@ -65,7 +68,6 @@ export default function EventDetailsPage({ params }) {
 
                 // Only update if the length is different to prevent jitter
                 setSelectedSeats(prev => {
-                    // Simple check to avoid infinite loops if data is same
                     if (prev.length === restoredSelection.length && 
                         restoredSelection.every(r => prev.find(p => p._id === r._id))) {
                         return prev;
@@ -87,7 +89,7 @@ export default function EventDetailsPage({ params }) {
         // Poll frequently to keep map updated
         const interval = setInterval(fetchEvent, 10000); 
         return () => clearInterval(interval);
-    }, [eventId, guestId]); // Re-run if guestId changes (should only happen once)
+    }, [eventId, guestId]); 
 
     // --- Helper: Find the seat expiring soonest ---
     useEffect(() => {
@@ -95,9 +97,13 @@ export default function EventDetailsPage({ params }) {
             setEarliestExpiration(null);
             return;
         }
-        const times = selectedSeats.map(s => new Date(s.expiresAt).getTime()).filter(t => !isNaN(t));
+        // Filter out any NaN dates or past dates just to be safe
+        const times = selectedSeats.map(s => new Date(s.expiresAt).getTime()).filter(t => !isNaN(t) && t > Date.now());
+        
         if (times.length > 0) {
             setEarliestExpiration(new Date(Math.min(...times)));
+        } else {
+            setEarliestExpiration(null);
         }
     }, [selectedSeats]);
 
@@ -108,11 +114,9 @@ export default function EventDetailsPage({ params }) {
 
         const isSelected = selectedSeats.some(s => s._id === seat._id);
         
-        // If it's already selected, we are RELEASING it.
         if (isSelected) {
             await releaseSeat(seat._id);
         } else {
-            // Otherwise we are HOLDING it.
             await holdSeat(seat);
         }
     };
@@ -124,7 +128,7 @@ export default function EventDetailsPage({ params }) {
             return;
         }
 
-        // Optimistic UI update (feels faster)
+        // Optimistic UI update
         const optimisticSeat = { ...seat, status: 'held', heldBy: guestId };
         setSelectedSeats(prev => [...prev, optimisticSeat]);
 
@@ -138,7 +142,6 @@ export default function EventDetailsPage({ params }) {
 
             if (!response.ok) {
                 alert(result.message);
-                // Revert optimistic update
                 setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
                 fetchEvent();
                 return;
@@ -151,14 +154,12 @@ export default function EventDetailsPage({ params }) {
 
         } catch (err) {
             console.error(err);
-            // Revert on error
             setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
         }
     };
 
-    // --- FIX 4: Separate Release Logic (Called by X button or unclick) ---
+    // --- FIX 4: Separate Release Logic ---
     const releaseSeat = async (seatId) => {
-        // Optimistic Remove
         setSelectedSeats(prev => prev.filter(s => s._id !== seatId));
 
         try {
@@ -167,17 +168,20 @@ export default function EventDetailsPage({ params }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seatId: seatId, action: 'release', holderId: guestId })
             });
-            // Fetch event to ensure map shows it as Green (Available) again
             fetchEvent();
         } catch (err) {
             console.error("Error releasing seat:", err);
         }
     };
 
+    // --- FIX 5: Silent Expiration ---
     const handleExpired = () => {
-        alert("Time expired! Your held seats have been released.");
-        setSelectedSeats([]); 
-        fetchEvent(); 
+        if (selectedSeats.length > 0) {
+            console.log("Timer expired. Clearing seats.");
+            setSelectedSeats([]); 
+            fetchEvent(); 
+            // We removed the alert() here to stop the popup loop
+        }
     };
 
     const handleReservedAddToCart = () => {
@@ -249,7 +253,6 @@ export default function EventDetailsPage({ params }) {
                                 selectedSeats={selectedSeats} 
                             />
                             
-                            {/* --- FIX 5: Added an explicit 'X' button to the list --- */}
                             {selectedSeats.length > 0 && (
                                 <div style={{marginTop: '20px', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px'}}>
                                     <h4>Selected Tickets:</h4>
