@@ -8,7 +8,8 @@ import Cleave from 'cleave.js/react';
 import 'cleave.js/dist/addons/cleave-phone.us';
 
 export default function CheckoutPage() {
-    const { user, cart, cartCount, clearCart } = useUser();
+    // --- FIX: Destructure removeFromCart ---
+    const { user, cart, cartCount, clearCart, removeFromCart } = useUser();
     const router = useRouter();
 
     const [formState, setFormState] = useState({
@@ -84,10 +85,23 @@ export default function CheckoutPage() {
             return;
         }
 
+        // Group items by event for the backend
         const purchasesByEvent = cart.reduce((acc, item) => {
-            const [eventId] = item.id.split('_');
+            // Reserved seats have IDs like 'seat_123', Standard have 'eventId_Type'
+            // We use item.eventId which we explicitly added to the cart object
+            const eventId = item.eventId || item.id.split('_')[0]; 
+            
             const event = acc[eventId] || { eventId, tickets: [] };
-            event.tickets.push({ name: item.name, quantity: item.quantity });
+            
+            // For reserved seating, we might want to pass specific seat IDs if the backend requires it
+            // But for now, name + quantity is standard
+            event.tickets.push({ 
+                name: item.name, 
+                quantity: item.quantity,
+                // Pass seatId if it's a reserved seat so backend can mark it SOLD
+                seatId: item.isReserved ? item.id : undefined 
+            });
+            
             acc[eventId] = event;
             return acc;
         }, {});
@@ -229,7 +243,25 @@ export default function CheckoutPage() {
                                     <span className="event-name">{item.eventName || 'Event'}</span>
                                     <span className="ticket-type">{item.name} x{item.quantity}</span>
                                 </div>
-                                <span>${(Number(item.price) * item.quantity).toFixed(2)}</span>
+                                <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                                    <span>${(Number(item.price) * item.quantity).toFixed(2)}</span>
+                                    {/* --- FIX: Added Remove Button --- */}
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeFromCart(item.id)}
+                                        style={{
+                                            background: 'none', 
+                                            border: 'none', 
+                                            color: '#ff4444', 
+                                            cursor: 'pointer',
+                                            fontSize: '1.1rem',
+                                            padding: '0 5px'
+                                        }}
+                                        title="Remove Item"
+                                    >
+                                        <i className="fas fa-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         )) : <p>Your cart is empty.</p>}
                     </div>

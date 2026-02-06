@@ -13,6 +13,11 @@ const ticketSchema = new mongoose.Schema({
         ref: 'User',
         default: null
     },
+    // --- NEW: Link to the specific seat (for Reserved Seating) ---
+    seatId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null
+    },
     ticketType: {
         type: String,
         required: true
@@ -35,10 +40,10 @@ const ticketSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['valid', 'refunded', 'checked-in'], // Corrected to 'valid'
-        default: 'valid' // Corrected to 'valid'
+        enum: ['valid', 'refunded', 'checked-in'], 
+        default: 'valid' 
     },
-    qrCodeUrl: { // ADDED: Field for the Cloudinary URL
+    qrCodeUrl: { 
         type: String,
     },
     checkedInAt: {
@@ -51,6 +56,6 @@ const ticketSchema = new mongoose.Schema({
         default: null
     },
 
-}, { timestamps: true }); // This handles createdAt (purchase date) and updatedAt automatically
+}, { timestamps: true }); 
 
 export default mongoose.models.Ticket || mongoose.model('Ticket', ticketSchema);

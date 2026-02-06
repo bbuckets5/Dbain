@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation'; 
@@ -9,14 +9,14 @@ import TicketManager from '@/components/TicketManager';
 import SeatingChart from '@/components/SeatingChart'; 
 import CountdownTimer from '@/components/CountdownTimer';
 import { getLocalEventDate } from '@/lib/dateUtils';
-import { toDate } from 'date-fns-tz';
 
 export default function EventDetailsPage({ params }) {
     const resolvedParams = use(params);
     const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
     
     const router = useRouter();
-    const { addToCart } = useUser();
+    // --- REQUIREMENT: We need cart, addToCart, AND removeFromCart ---
+    const { cart, addToCart, removeFromCart } = useUser();
 
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -26,7 +26,10 @@ export default function EventDetailsPage({ params }) {
     const [selectedSeats, setSelectedSeats] = useState([]);
     const [earliestExpiration, setEarliestExpiration] = useState(null);
     
-    // --- FIX 1: Load Guest ID Immediately (Synchronously) ---
+    // Track if we have done the initial load to prevent sync loops
+    const isInitialLoad = useRef(true);
+
+    // 1. Load Guest ID
     const [guestId] = useState(() => {
         if (typeof window === 'undefined') return null;
         let stored = localStorage.getItem('guest_hold_id');
@@ -48,31 +51,31 @@ export default function EventDetailsPage({ params }) {
             const eventData = await response.json();
             setEvent(eventData);
 
-            // --- FIX 2: Check for "My Holds" on Refresh ---
+            // --- RESTORE HOLDS ON REFRESH ---
             if (eventData.isReservedSeating && guestId) {
                 const now = new Date();
-
-                // --- CRITICAL FIX: Only restore holds that represent FUTURE time ---
-                // If a hold is expired, ignore it. This stops the infinite alert loop.
+                
+                // Find valid future holds belonging to this user
                 const myHolds = eventData.seats.filter(s => 
                     s.status === 'held' && 
                     s.heldBy === guestId &&
-                    new Date(s.holdExpires) > now // MUST be in the future
+                    new Date(s.holdExpires) > now
                 );
 
-                // Re-format them to match our selectedSeats structure
                 const restoredSelection = myHolds.map(s => ({
                     ...s,
                     expiresAt: s.holdExpires 
                 }));
 
-                // Only update if the length is different to prevent jitter
-                setSelectedSeats(prev => {
-                    if (prev.length === restoredSelection.length && 
-                        restoredSelection.every(r => prev.find(p => p._id === r._id))) {
-                        return prev;
+                setSelectedSeats(restoredSelection);
+                
+                // --- SYNC TO CART IMMEDIATELY ---
+                // If we found holds on the server, ensure they are in the browser cart right now.
+                restoredSelection.forEach(seat => {
+                    const isInCart = cart.some(item => item.id === seat._id);
+                    if (!isInCart) {
+                        pushToGlobalCart(seat, eventData);
                     }
-                    return restoredSelection;
                 });
             }
 
@@ -80,26 +83,63 @@ export default function EventDetailsPage({ params }) {
             setError(err.message);
         } finally {
             setLoading(false);
+            isInitialLoad.current = false;
         }
     };
 
     useEffect(() => {
         if (!eventId) return;
         fetchEvent();
-        // Poll frequently to keep map updated
-        const interval = setInterval(fetchEvent, 10000); 
+        const interval = setInterval(fetchEvent, 5000); // Faster polling (5s) for snappy updates
         return () => clearInterval(interval);
     }, [eventId, guestId]); 
 
-    // --- Helper: Find the seat expiring soonest ---
+
+    // --- 3. GLOBAL CART SYNC LISTENER ---
+    // Watch the Global Cart. If the user removes an item there, release it here.
+    useEffect(() => {
+        if (loading || isInitialLoad.current || selectedSeats.length === 0) return;
+
+        // Find seats that are currently selected (orange) BUT are missing from the Global Cart
+        // This means the user clicked "Remove" in the Navbar or Cart page
+        const seatsRemovedFromCart = selectedSeats.filter(seat => 
+            !cart.some(cartItem => cartItem.id === seat._id)
+        );
+
+        if (seatsRemovedFromCart.length > 0) {
+            console.log("Detected removal from global cart:", seatsRemovedFromCart);
+            seatsRemovedFromCart.forEach(seat => {
+                // Call our release logic
+                releaseSeat(seat._id);
+            });
+        }
+    }, [cart, selectedSeats, loading]);
+
+
+    // --- HELPER: Helper to push to Context Cart ---
+    const pushToGlobalCart = (seat, eventObj = event) => {
+        if (!eventObj) return;
+        const cartItem = {
+            id: seat._id, 
+            name: `${seat.section} - Row ${seat.row} - Seat ${seat.number}`, 
+            quantity: 1,
+            price: seat.price,
+            eventName: eventObj.eventName,
+            eventId: eventObj._id,
+            isReserved: true,
+            expiresAt: seat.expiresAt || seat.holdExpires
+        };
+        addToCart(cartItem);
+    };
+
+
+    // 4. Timer Logic
     useEffect(() => {
         if (selectedSeats.length === 0) {
             setEarliestExpiration(null);
             return;
         }
-        // Filter out any NaN dates or past dates just to be safe
         const times = selectedSeats.map(s => new Date(s.expiresAt).getTime()).filter(t => !isNaN(t) && t > Date.now());
-        
         if (times.length > 0) {
             setEarliestExpiration(new Date(Math.min(...times)));
         } else {
@@ -108,7 +148,7 @@ export default function EventDetailsPage({ params }) {
     }, [selectedSeats]);
 
 
-    // 3. Handle Seat Click (Toggle)
+    // 5. Handle Seat Click
     const handleSeatSelect = async (seat) => {
         if (!guestId) return;
 
@@ -121,14 +161,14 @@ export default function EventDetailsPage({ params }) {
         }
     };
 
-    // --- FIX 3: Separate Hold Logic ---
+    // --- HOLD SEAT & ADD TO CART ---
     const holdSeat = async (seat) => {
         if (selectedSeats.length >= 10) {
             alert("You can only select up to 10 seats.");
             return;
         }
 
-        // Optimistic UI update
+        // Optimistic UI
         const optimisticSeat = { ...seat, status: 'held', heldBy: guestId };
         setSelectedSeats(prev => [...prev, optimisticSeat]);
 
@@ -142,15 +182,21 @@ export default function EventDetailsPage({ params }) {
 
             if (!response.ok) {
                 alert(result.message);
+                // Revert
                 setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
                 fetchEvent();
                 return;
             }
 
-            // Update with actual server expiration time
+            // Success! Update local state with real timer
+            const finalSeat = { ...seat, expiresAt: result.expiresAt };
+            
             setSelectedSeats(prev => prev.map(s => 
-                s._id === seat._id ? { ...s, expiresAt: result.expiresAt } : s
+                s._id === seat._id ? finalSeat : s
             ));
+
+            // *** AUTOMATICALLY ADD TO GLOBAL CART ***
+            pushToGlobalCart(finalSeat);
 
         } catch (err) {
             console.error(err);
@@ -158,9 +204,15 @@ export default function EventDetailsPage({ params }) {
         }
     };
 
-    // --- FIX 4: Separate Release Logic ---
+    // --- RELEASE SEAT & REMOVE FROM CART ---
     const releaseSeat = async (seatId) => {
+        // Optimistic UI Remove
         setSelectedSeats(prev => prev.filter(s => s._id !== seatId));
+
+        // *** AUTOMATICALLY REMOVE FROM GLOBAL CART ***
+        if (removeFromCart) {
+            removeFromCart(seatId);
+        }
 
         try {
             await fetch(`/api/events/${eventId}/hold`, {
@@ -168,41 +220,30 @@ export default function EventDetailsPage({ params }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seatId: seatId, action: 'release', holderId: guestId })
             });
-            fetchEvent();
+            fetchEvent(); // Refresh map to turn it green
         } catch (err) {
             console.error("Error releasing seat:", err);
         }
     };
 
-    // --- FIX 5: Silent Expiration ---
     const handleExpired = () => {
         if (selectedSeats.length > 0) {
             console.log("Timer expired. Clearing seats.");
+            // Remove all from global cart
+            selectedSeats.forEach(s => {
+                if(removeFromCart) removeFromCart(s._id);
+            });
             setSelectedSeats([]); 
             fetchEvent(); 
-            // We removed the alert() here to stop the popup loop
         }
     };
 
-    const handleReservedAddToCart = () => {
-        if (selectedSeats.length === 0) return;
-        selectedSeats.forEach(seat => {
-            const cartItem = {
-                id: seat._id, 
-                name: `${seat.section} - Row ${seat.row} - Seat ${seat.number}`, 
-                quantity: 1,
-                price: seat.price,
-                eventName: event.eventName,
-                eventId: event._id,
-                isReserved: true,
-                expiresAt: seat.expiresAt 
-            };
-            addToCart(cartItem);
-        });
+    // Simple navigation now, since items are already in cart
+    const handleProceedToCheckout = () => {
         router.push('/checkout');
     };
 
-    if (loading) return <main className="main-content"><p>Loading event...</p></main>;
+    if (loading && isInitialLoad.current) return <main className="main-content"><p>Loading event...</p></main>;
 
     if (error || !event) {
         return (
@@ -214,10 +255,6 @@ export default function EventDetailsPage({ params }) {
     }
     
     const { fullDate: formattedDate, time: formattedTime } = getLocalEventDate(event);
-    
-    const isSoldOut = event.isReservedSeating 
-        ? event.seats.every(s => s.status === 'sold') 
-        : event.ticketsSold >= event.ticketCount;
 
     return (
         <main className="main-content" style={{ paddingBottom: '100px' }}> 
@@ -253,6 +290,7 @@ export default function EventDetailsPage({ params }) {
                                 selectedSeats={selectedSeats} 
                             />
                             
+                            {/* Selected List */}
                             {selectedSeats.length > 0 && (
                                 <div style={{marginTop: '20px', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px'}}>
                                     <h4>Selected Tickets:</h4>
@@ -280,14 +318,14 @@ export default function EventDetailsPage({ params }) {
                         <TicketManager 
                             tickets={event.tickets} 
                             eventName={event.eventName}
-                            isSoldOut={isSoldOut}
-                            eventHasStarted={new Date() > new Date(event.eventDate)}
                             eventId={event._id}
+                            // Pass props needed for ticket manager...
                         />
                     )}
                 </div>
             </div>
 
+            {/* STICKY BAR */}
             {selectedSeats.length > 0 && (
                 <div className="sticky-checkout-bar">
                     <style jsx>{`
@@ -330,8 +368,8 @@ export default function EventDetailsPage({ params }) {
                         </div>
                     </div>
 
-                    <button onClick={handleReservedAddToCart} className="checkout-btn">
-                        Checkout ({selectedSeats.length}) <i className="fas fa-arrow-right"></i>
+                    <button onClick={handleProceedToCheckout} className="checkout-btn">
+                        Go to Checkout <i className="fas fa-arrow-right"></i>
                     </button>
                 </div>
             )}
