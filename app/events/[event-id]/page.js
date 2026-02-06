@@ -3,6 +3,8 @@
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation'; // --- NEW IMPORT ---
+import { useUser } from '@/components/UserContext'; // --- NEW IMPORT ---
 import TicketManager from '@/components/TicketManager';
 import SeatingChart from '@/components/SeatingChart'; 
 import CountdownTimer from '@/components/CountdownTimer';
@@ -12,6 +14,10 @@ import { toDate } from 'date-fns-tz';
 export default function EventDetailsPage({ params }) {
     const resolvedParams = use(params);
     const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
+    
+    // --- Hooks for Cart & Navigation ---
+    const router = useRouter();
+    const { addToCart } = useUser();
 
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -62,7 +68,6 @@ export default function EventDetailsPage({ params }) {
             setEarliestExpiration(null);
             return;
         }
-        // Find the earliest date object among all selected seats
         const times = selectedSeats.map(s => new Date(s.expiresAt).getTime()).filter(t => !isNaN(t));
         if (times.length > 0) {
             setEarliestExpiration(new Date(Math.min(...times)));
@@ -116,12 +121,32 @@ export default function EventDetailsPage({ params }) {
 
     const handleExpired = () => {
         alert("Time expired! Your held seats have been released.");
-        setSelectedSeats([]); // Clear local selection
-        fetchEvent(); // Refresh map to show them as available again (or taken by someone else)
+        setSelectedSeats([]); 
+        fetchEvent(); 
     };
 
+    // --- 4. REAL CHECKOUT LOGIC ---
     const handleReservedAddToCart = () => {
-        alert("Seats successfully held! Proceeding to checkout...");
+        if (selectedSeats.length === 0) return;
+
+        // Loop through each selected seat and add it as a unique cart item
+        selectedSeats.forEach(seat => {
+            const cartItem = {
+                id: seat._id, // Use unique Seat ID
+                name: `${seat.section} - Row ${seat.row} - Seat ${seat.number}`, 
+                quantity: 1,
+                price: seat.price,
+                eventName: event.eventName,
+                eventId: event._id,
+                // Extra metadata for the checkout process
+                isReserved: true,
+                expiresAt: seat.expiresAt 
+            };
+            addToCart(cartItem);
+        });
+
+        // Redirect to checkout page
+        router.push('/checkout');
     };
 
     if (loading) return <main className="main-content"><p>Loading event...</p></main>;
@@ -143,7 +168,6 @@ export default function EventDetailsPage({ params }) {
 
     return (
         <main className="main-content" style={{ paddingBottom: '100px' }}> 
-            {/* Added paddingBottom so the sticky footer doesn't cover content */}
             
             <div className="event-details-container glass">
                 <div className="event-image-box">
@@ -176,7 +200,7 @@ export default function EventDetailsPage({ params }) {
                                 selectedSeats={selectedSeats} 
                             />
                             
-                            {/* Standard List (Timer Removed from here) */}
+                            {/* Simple list of selected seats (optional, as they are in the footer too) */}
                             {selectedSeats.length > 0 && (
                                 <div style={{marginTop: '20px', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px'}}>
                                     <h4>Selected Tickets:</h4>
@@ -203,7 +227,7 @@ export default function EventDetailsPage({ params }) {
                 </div>
             </div>
 
-            {/* --- NEW: STICKY CHECKOUT BAR --- */}
+            {/* --- STICKY CHECKOUT BAR --- */}
             {selectedSeats.length > 0 && (
                 <div className="sticky-checkout-bar">
                     <style jsx>{`
