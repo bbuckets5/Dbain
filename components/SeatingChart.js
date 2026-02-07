@@ -196,6 +196,11 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
                     <div className="legend-dot" style={{background: '#444'}}></div>
                     <span>Taken</span>
                 </div>
+                {/* Fixed nesting and matched color to CSS (#d9534f) */}
+                <div className="legend-item">
+                    <div className="legend-dot" style={{background: '#d9534f'}}></div>
+                    <span>Sold</span>
+                </div>
             </div>
         </div>
     );
