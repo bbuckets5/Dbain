@@ -16,7 +16,7 @@ export default function EventDetailsPage({ params }) {
     
     const router = useRouter();
     
-    // Get 'loading' status from UserContext (renamed to userLoading to avoid naming conflict)
+    // Get 'loading' status from UserContext (renamed to userLoading)
     const { cart, addToCart, removeFromCart, loading: userLoading } = useUser();
 
     const [event, setEvent] = useState(null);
@@ -53,11 +53,9 @@ export default function EventDetailsPage({ params }) {
             setEvent(eventData);
 
             // --- RESTORE HOLDS ON REFRESH ---
-            // Only runs once on mount
             if (isInitialLoad.current && eventData.isReservedSeating && guestId) {
                 const now = new Date();
                 
-                // Find valid future holds belonging to this user
                 const myHolds = eventData.seats.filter(s => 
                     s.status === 'held' && 
                     s.heldBy === guestId &&
@@ -72,9 +70,7 @@ export default function EventDetailsPage({ params }) {
                 if (restoredSelection.length > 0) {
                     setSelectedSeats(restoredSelection);
                     
-                    // --- SYNC TO CART IMMEDIATELY ---
                     restoredSelection.forEach(seat => {
-                        // Check if seat is already in cart to avoid duplicates
                         const isInCart = cart.some(item => item.id === seat._id);
                         if (!isInCart) {
                             pushToGlobalCart(seat, eventData);
@@ -88,9 +84,7 @@ export default function EventDetailsPage({ params }) {
         } finally {
             setLoading(false);
             
-            // --- CRITICAL FIX: Delay turning off isInitialLoad ---
-            // We wait 1 second to allow the addToCart state to fully propagate 
-            // before we let the "Cleanup Listener" run. This stops the "Detected Removal" bug.
+            // Safety Buffer to prevent instant deletion on load
             setTimeout(() => {
                 isInitialLoad.current = false; 
             }, 1000);
@@ -107,19 +101,12 @@ export default function EventDetailsPage({ params }) {
 
     // --- 3. GLOBAL CART SYNC LISTENER ---
     useEffect(() => {
-        // STRICT BLOCKING:
-        // 1. If page is loading
-        // 2. If User/Cart is loading
-        // 3. If we are in the 1-second "Safety Buffer" (isInitialLoad)
-        // 4. If we have no seats selected
         if (loading || userLoading || isInitialLoad.current || selectedSeats.length === 0) return;
 
-        // Find seats that are currently selected (orange) BUT are missing from the Global Cart
         const seatsRemovedFromCart = selectedSeats.filter(seat => 
             !cart.some(cartItem => cartItem.id === seat._id)
         );
 
-        // Only fire if we found a discrepancy
         if (seatsRemovedFromCart.length > 0) {
             console.log("User manually removed items from cart. Releasing seats:", seatsRemovedFromCart);
             seatsRemovedFromCart.forEach(seat => {
@@ -181,8 +168,12 @@ export default function EventDetailsPage({ params }) {
             return;
         }
 
-        // Optimistic UI
-        const optimisticSeat = { ...seat, status: 'held', heldBy: guestId };
+        // --- FIX: ADD FAKE TIMER FOR INSTANT FEEDBACK ---
+        // We set a 10-minute expiry immediately so the timer shows up instantly.
+        // When the server responds, it will update this with the "real" time.
+        const fakeExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        const optimisticSeat = { ...seat, status: 'held', heldBy: guestId, expiresAt: fakeExpiry };
+        
         setSelectedSeats(prev => [...prev, optimisticSeat]);
 
         try {
@@ -200,14 +191,13 @@ export default function EventDetailsPage({ params }) {
                 return;
             }
 
-            // Success! Update local state with real timer
+            // Success! Update local state with REAL server timer
             const finalSeat = { ...seat, expiresAt: result.expiresAt };
             
             setSelectedSeats(prev => prev.map(s => 
                 s._id === seat._id ? finalSeat : s
             ));
 
-            // *** AUTOMATICALLY ADD TO GLOBAL CART ***
             pushToGlobalCart(finalSeat);
 
         } catch (err) {
@@ -221,7 +211,6 @@ export default function EventDetailsPage({ params }) {
         // Optimistic UI Remove
         setSelectedSeats(prev => prev.filter(s => s._id !== seatId));
 
-        // *** AUTOMATICALLY REMOVE FROM GLOBAL CART ***
         if (removeFromCart) {
             removeFromCart(seatId);
         }
@@ -294,15 +283,25 @@ export default function EventDetailsPage({ params }) {
                     {event.isReservedSeating ? (
                         <div className="reserved-seating-section">
                             <h3>Select Your Seats</h3>
-                            {/* Pass guestId so the map knows YOU own the hold */}
-                            <SeatingChart 
-                                seats={event.seats} 
-                                onSeatSelect={handleSeatSelect} 
-                                selectedSeats={selectedSeats} 
-                                guestId={guestId}
-                            />
                             
-                            {/* Selected List */}
+                            {/* --- FIX: MOBILE SCROLL WRAPPER --- */}
+                            <div className="map-scroll-container">
+                                <style jsx>{`
+                                    .map-scroll-container {
+                                        width: 100%;
+                                        overflow-x: auto;
+                                        padding-bottom: 20px; /* Space for scrollbar */
+                                        -webkit-overflow-scrolling: touch; /* Smooth scroll on iOS */
+                                    }
+                                `}</style>
+                                <SeatingChart 
+                                    seats={event.seats} 
+                                    onSeatSelect={handleSeatSelect} 
+                                    selectedSeats={selectedSeats} 
+                                    guestId={guestId}
+                                />
+                            </div>
+                            
                             {selectedSeats.length > 0 && (
                                 <div style={{marginTop: '20px', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px'}}>
                                     <h4>Selected Tickets:</h4>
@@ -386,3 +385,4 @@ export default function EventDetailsPage({ params }) {
         </main>
     );
 }
+
