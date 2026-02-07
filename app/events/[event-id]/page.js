@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@/components/UserContext'; 
 import TicketManager from '@/components/TicketManager';
 import SeatingChart from '@/components/SeatingChart'; 
-import CountdownTimer from '@/components/CountdownTimer';
 import { getLocalEventDate } from '@/lib/dateUtils';
 
 export default function EventDetailsPage({ params }) {
@@ -15,8 +14,6 @@ export default function EventDetailsPage({ params }) {
     const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
     
     const router = useRouter();
-    
-    // Get 'loading' status from UserContext (renamed to userLoading)
     const { cart, addToCart, removeFromCart, loading: userLoading } = useUser();
 
     const [event, setEvent] = useState(null);
@@ -25,12 +22,11 @@ export default function EventDetailsPage({ params }) {
     
     // --- Reserved Seating State ---
     const [selectedSeats, setSelectedSeats] = useState([]);
-    const [earliestExpiration, setEarliestExpiration] = useState(null);
     
-    // Track if we have done the initial load to prevent sync loops
+    // Track initial load
     const isInitialLoad = useRef(true);
 
-    // 1. Load Guest ID
+    // 1. Load Guest ID (Kept for backend hold logic)
     const [guestId] = useState(() => {
         if (typeof window === 'undefined') return null;
         let stored = localStorage.getItem('guest_hold_id');
@@ -41,7 +37,7 @@ export default function EventDetailsPage({ params }) {
         return stored;
     });
 
-    // 2. Fetch Event Data & RESTORE HOLDS
+    // 2. Fetch Event Data & Sync
     const fetchEvent = async () => {
         try {
             const response = await fetch(`/api/events/${eventId}`);
@@ -56,21 +52,16 @@ export default function EventDetailsPage({ params }) {
             if (isInitialLoad.current && eventData.isReservedSeating && guestId) {
                 const now = new Date();
                 
+                // Find valid holds for this user
                 const myHolds = eventData.seats.filter(s => 
-                    s.status === 'held' && 
-                    s.heldBy === guestId &&
-                    new Date(s.holdExpires) > now
+                    s.status === 'held' && s.heldBy === guestId
                 );
 
-                const restoredSelection = myHolds.map(s => ({
-                    ...s,
-                    expiresAt: s.holdExpires 
-                }));
-
-                if (restoredSelection.length > 0) {
-                    setSelectedSeats(restoredSelection);
+                if (myHolds.length > 0) {
+                    setSelectedSeats(myHolds);
                     
-                    restoredSelection.forEach(seat => {
+                    // Sync to global cart if missing
+                    myHolds.forEach(seat => {
                         const isInCart = cart.some(item => item.id === seat._id);
                         if (!isInCart) {
                             pushToGlobalCart(seat, eventData);
@@ -83,11 +74,8 @@ export default function EventDetailsPage({ params }) {
             setError(err.message);
         } finally {
             setLoading(false);
-            
-            // Safety Buffer to prevent instant deletion on load
-            setTimeout(() => {
-                isInitialLoad.current = false; 
-            }, 1000);
+            // Safety buffer
+            setTimeout(() => { isInitialLoad.current = false; }, 1000);
         }
     };
 
@@ -103,12 +91,13 @@ export default function EventDetailsPage({ params }) {
     useEffect(() => {
         if (loading || userLoading || isInitialLoad.current || selectedSeats.length === 0) return;
 
+        // If user removed item from cart (navbar), remove it from selection here
         const seatsRemovedFromCart = selectedSeats.filter(seat => 
             !cart.some(cartItem => cartItem.id === seat._id)
         );
 
         if (seatsRemovedFromCart.length > 0) {
-            console.log("User manually removed items from cart. Releasing seats:", seatsRemovedFromCart);
+            console.log("Releasing seats removed from cart:", seatsRemovedFromCart);
             seatsRemovedFromCart.forEach(seat => {
                 releaseSeat(seat._id);
             });
@@ -116,7 +105,6 @@ export default function EventDetailsPage({ params }) {
     }, [cart, selectedSeats, loading, userLoading]);
 
 
-    // --- HELPER: Helper to push to Context Cart ---
     const pushToGlobalCart = (seat, eventObj = event) => {
         if (!eventObj) return;
         const cartItem = {
@@ -127,28 +115,11 @@ export default function EventDetailsPage({ params }) {
             eventName: eventObj.eventName,
             eventId: eventObj._id,
             isReserved: true,
-            expiresAt: seat.expiresAt || seat.holdExpires
         };
         addToCart(cartItem);
     };
 
-
-    // 4. Timer Logic
-    useEffect(() => {
-        if (selectedSeats.length === 0) {
-            setEarliestExpiration(null);
-            return;
-        }
-        const times = selectedSeats.map(s => new Date(s.expiresAt).getTime()).filter(t => !isNaN(t) && t > Date.now());
-        if (times.length > 0) {
-            setEarliestExpiration(new Date(Math.min(...times)));
-        } else {
-            setEarliestExpiration(null);
-        }
-    }, [selectedSeats]);
-
-
-    // 5. Handle Seat Click
+    // 4. Handle Seat Click
     const handleSeatSelect = async (seat) => {
         if (!guestId) return;
 
@@ -161,59 +132,38 @@ export default function EventDetailsPage({ params }) {
         }
     };
 
-    // --- HOLD SEAT & ADD TO CART ---
+    // --- HOLD SEAT ---
     const holdSeat = async (seat) => {
         if (selectedSeats.length >= 10) {
             alert("You can only select up to 10 seats.");
             return;
         }
 
-        // --- FIX: ADD FAKE TIMER FOR INSTANT FEEDBACK ---
-        // We set a 10-minute expiry immediately so the timer shows up instantly.
-        // When the server responds, it will update this with the "real" time.
-        const fakeExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-        const optimisticSeat = { ...seat, status: 'held', heldBy: guestId, expiresAt: fakeExpiry };
-        
+        // Optimistic Update
+        const optimisticSeat = { ...seat, status: 'held', heldBy: guestId };
         setSelectedSeats(prev => [...prev, optimisticSeat]);
+        pushToGlobalCart(optimisticSeat); // Add to cart immediately
 
         try {
-            const response = await fetch(`/api/events/${eventId}/hold`, {
+            // Tell server to hold it (Background logic)
+            await fetch(`/api/events/${eventId}/hold`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seatId: seat._id, action: 'hold', holderId: guestId })
             });
-            const result = await response.json();
-
-            if (!response.ok) {
-                alert(result.message);
-                setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
-                fetchEvent();
-                return;
-            }
-
-            // Success! Update local state with REAL server timer
-            const finalSeat = { ...seat, expiresAt: result.expiresAt };
-            
-            setSelectedSeats(prev => prev.map(s => 
-                s._id === seat._id ? finalSeat : s
-            ));
-
-            pushToGlobalCart(finalSeat);
-
+            // We don't wait for response to update UI anymore. Fast & Simple.
         } catch (err) {
             console.error(err);
+            // Revert if network fails
             setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
+            if(removeFromCart) removeFromCart(seat._id);
         }
     };
 
-    // --- RELEASE SEAT & REMOVE FROM CART ---
+    // --- RELEASE SEAT ---
     const releaseSeat = async (seatId) => {
-        // Optimistic UI Remove
         setSelectedSeats(prev => prev.filter(s => s._id !== seatId));
-
-        if (removeFromCart) {
-            removeFromCart(seatId);
-        }
+        if (removeFromCart) removeFromCart(seatId);
 
         try {
             await fetch(`/api/events/${eventId}/hold`, {
@@ -221,20 +171,9 @@ export default function EventDetailsPage({ params }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seatId: seatId, action: 'release', holderId: guestId })
             });
-            fetchEvent(); // Refresh map to turn it green
+            fetchEvent(); 
         } catch (err) {
             console.error("Error releasing seat:", err);
-        }
-    };
-
-    const handleExpired = () => {
-        if (selectedSeats.length > 0) {
-            console.log("Timer expired. Clearing seats.");
-            selectedSeats.forEach(s => {
-                if(removeFromCart) removeFromCart(s._id);
-            });
-            setSelectedSeats([]); 
-            fetchEvent(); 
         }
     };
 
@@ -284,23 +223,13 @@ export default function EventDetailsPage({ params }) {
                         <div className="reserved-seating-section">
                             <h3>Select Your Seats</h3>
                             
-                            {/* --- FIX: MOBILE SCROLL WRAPPER --- */}
-                            <div className="map-scroll-container">
-                                <style jsx>{`
-                                    .map-scroll-container {
-                                        width: 100%;
-                                        overflow-x: auto;
-                                        padding-bottom: 20px; /* Space for scrollbar */
-                                        -webkit-overflow-scrolling: touch; /* Smooth scroll on iOS */
-                                    }
-                                `}</style>
-                                <SeatingChart 
-                                    seats={event.seats} 
-                                    onSeatSelect={handleSeatSelect} 
-                                    selectedSeats={selectedSeats} 
-                                    guestId={guestId}
-                                />
-                            </div>
+                            {/* Seating Chart (Mobile Scroll handled inside component) */}
+                            <SeatingChart 
+                                seats={event.seats} 
+                                onSeatSelect={handleSeatSelect} 
+                                selectedSeats={selectedSeats} 
+                                guestId={guestId}
+                            />
                             
                             {selectedSeats.length > 0 && (
                                 <div style={{marginTop: '20px', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px'}}>
@@ -348,11 +277,6 @@ export default function EventDetailsPage({ params }) {
                         }
                         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
                         .bar-info { display: flex; gap: 20px; align-items: center; }
-                        .timer-box {
-                            background: rgba(255, 68, 68, 0.2); border: 1px solid #ff4444; color: #ff4444;
-                            padding: 5px 10px; border-radius: 4px; font-weight: bold;
-                            display: flex; align-items: center; gap: 8px;
-                        }
                         .total-price { font-size: 1.2rem; font-weight: bold; color: white; }
                         .checkout-btn {
                             background: #00d4ff; color: black; border: none; padding: 10px 25px;
@@ -365,13 +289,6 @@ export default function EventDetailsPage({ params }) {
                     `}</style>
 
                     <div className="bar-info">
-                        {earliestExpiration && (
-                            <div className="timer-box">
-                                <i className="fas fa-stopwatch"></i>
-                                <span>Time Left: </span>
-                                <CountdownTimer targetDate={earliestExpiration} onExpire={handleExpired} />
-                            </div>
-                        )}
                         <div className="total-price">
                             Total: ${selectedSeats.reduce((sum, s) => sum + s.price, 0).toFixed(2)}
                         </div>
@@ -385,4 +302,3 @@ export default function EventDetailsPage({ params }) {
         </main>
     );
 }
-
