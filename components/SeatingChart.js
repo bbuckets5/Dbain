@@ -127,7 +127,7 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
                 .seat:hover:not(:disabled) { transform: scale(1.1); }
                 .seat.available { background-color: #28a745; box-shadow: 0 2px 5px rgba(40, 167, 69, 0.3); }
                 .seat.selected { background-color: #ff9900; box-shadow: 0 0 10px #ff9900; color: black; font-weight: bold; }
-                .seat.sold { background-color: #444; color: #888; cursor: not-allowed; opacity: 0.6; }
+                .seat.sold { background-color: #d9534f; color: #fff; cursor: not-allowed; opacity: 0.6; }
                 .seat.held { background-color: #666; cursor: not-allowed; }
                 .legend {
                     display: flex; justify-content: center; gap: 20px; margin-top: 30px;
