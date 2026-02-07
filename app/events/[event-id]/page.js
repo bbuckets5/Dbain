@@ -15,7 +15,9 @@ export default function EventDetailsPage({ params }) {
     const eventId = resolvedParams['event-id'] || resolvedParams['id'] || resolvedParams['eventId'];
     
     const router = useRouter();
-    const { cart, addToCart, removeFromCart } = useUser();
+    
+    // Get 'loading' status from UserContext (renamed to userLoading to avoid naming conflict)
+    const { cart, addToCart, removeFromCart, loading: userLoading } = useUser();
 
     const [event, setEvent] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -51,9 +53,7 @@ export default function EventDetailsPage({ params }) {
             setEvent(eventData);
 
             // --- RESTORE HOLDS ON REFRESH ---
-            // FIX: We check isInitialLoad.current. 
-            // This ensures we only sync with the server once (on load).
-            // After that, we trust your local clicks so seats don't disappear while you select them.
+            // Only runs once on mount
             if (isInitialLoad.current && eventData.isReservedSeating && guestId) {
                 const now = new Date();
                 
@@ -69,23 +69,31 @@ export default function EventDetailsPage({ params }) {
                     expiresAt: s.holdExpires 
                 }));
 
-                setSelectedSeats(restoredSelection);
-                
-                // --- SYNC TO CART IMMEDIATELY ---
-                restoredSelection.forEach(seat => {
-                    const isInCart = cart.some(item => item.id === seat._id);
-                    if (!isInCart) {
-                        pushToGlobalCart(seat, eventData);
-                    }
-                });
+                if (restoredSelection.length > 0) {
+                    setSelectedSeats(restoredSelection);
+                    
+                    // --- SYNC TO CART IMMEDIATELY ---
+                    restoredSelection.forEach(seat => {
+                        // Check if seat is already in cart to avoid duplicates
+                        const isInCart = cart.some(item => item.id === seat._id);
+                        if (!isInCart) {
+                            pushToGlobalCart(seat, eventData);
+                        }
+                    });
+                }
             }
 
         } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
-            // Mark initial load as complete so the interval doesn't mess with us anymore
-            isInitialLoad.current = false; 
+            
+            // --- CRITICAL FIX: Delay turning off isInitialLoad ---
+            // We wait 1 second to allow the addToCart state to fully propagate 
+            // before we let the "Cleanup Listener" run. This stops the "Detected Removal" bug.
+            setTimeout(() => {
+                isInitialLoad.current = false; 
+            }, 1000);
         }
     };
 
@@ -99,20 +107,26 @@ export default function EventDetailsPage({ params }) {
 
     // --- 3. GLOBAL CART SYNC LISTENER ---
     useEffect(() => {
-        if (loading || isInitialLoad.current || selectedSeats.length === 0) return;
+        // STRICT BLOCKING:
+        // 1. If page is loading
+        // 2. If User/Cart is loading
+        // 3. If we are in the 1-second "Safety Buffer" (isInitialLoad)
+        // 4. If we have no seats selected
+        if (loading || userLoading || isInitialLoad.current || selectedSeats.length === 0) return;
 
         // Find seats that are currently selected (orange) BUT are missing from the Global Cart
         const seatsRemovedFromCart = selectedSeats.filter(seat => 
             !cart.some(cartItem => cartItem.id === seat._id)
         );
 
+        // Only fire if we found a discrepancy
         if (seatsRemovedFromCart.length > 0) {
-            console.log("Detected removal from global cart:", seatsRemovedFromCart);
+            console.log("User manually removed items from cart. Releasing seats:", seatsRemovedFromCart);
             seatsRemovedFromCart.forEach(seat => {
                 releaseSeat(seat._id);
             });
         }
-    }, [cart, selectedSeats, loading]);
+    }, [cart, selectedSeats, loading, userLoading]);
 
 
     // --- HELPER: Helper to push to Context Cart ---
@@ -181,7 +195,6 @@ export default function EventDetailsPage({ params }) {
 
             if (!response.ok) {
                 alert(result.message);
-                // Revert
                 setSelectedSeats(prev => prev.filter(s => s._id !== seat._id));
                 fetchEvent();
                 return;
@@ -228,7 +241,6 @@ export default function EventDetailsPage({ params }) {
     const handleExpired = () => {
         if (selectedSeats.length > 0) {
             console.log("Timer expired. Clearing seats.");
-            // Remove all from global cart
             selectedSeats.forEach(s => {
                 if(removeFromCart) removeFromCart(s._id);
             });
@@ -282,10 +294,12 @@ export default function EventDetailsPage({ params }) {
                     {event.isReservedSeating ? (
                         <div className="reserved-seating-section">
                             <h3>Select Your Seats</h3>
+                            {/* Pass guestId so the map knows YOU own the hold */}
                             <SeatingChart 
                                 seats={event.seats} 
                                 onSeatSelect={handleSeatSelect} 
                                 selectedSeats={selectedSeats} 
+                                guestId={guestId}
                             />
                             
                             {/* Selected List */}
@@ -322,7 +336,6 @@ export default function EventDetailsPage({ params }) {
                 </div>
             </div>
 
-            {/* STICKY BAR */}
             {selectedSeats.length > 0 && (
                 <div className="sticky-checkout-bar">
                     <style jsx>{`
