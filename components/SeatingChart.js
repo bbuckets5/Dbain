@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from 'react';
 
-// --- NEW PROP: guestId added here ---
 export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guestId }) {
     const [activeSection, setActiveSection] = useState(null);
 
@@ -38,7 +37,7 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
         setActiveSection(sections[0]);
     }
 
-    // --- FIX: Logic to handle ownership ---
+    // --- LOGIC: Handle Seat Colors ---
     const getSeatStatus = (seat) => {
         // 1. Is it selected in our local temporary list? -> ORANGE
         if (selectedSeats.some(s => s._id === seat._id)) return 'selected';
@@ -48,7 +47,7 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
 
         // 3. Is it held?
         if (seat.status === 'held') {
-            // CRITICAL CHECK: Is it held by ME? -> ORANGE
+            // Is it held by ME? -> ORANGE (Treat as selected)
             if (seat.heldBy === guestId) {
                 return 'selected';
             }
@@ -88,7 +87,34 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
                     text-align: center; color: rgba(255,255,255,0.5); font-size: 0.8rem;
                     line-height: 30px; text-transform: uppercase; letter-spacing: 2px;
                 }
-                .rows-container { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+                
+                /* FIX: SCROLLABLE WRAPPER FOR THE GRID */
+                .grid-scroll-wrapper {
+                    width: 100%;
+                    overflow-x: auto; /* Enable horizontal scroll */
+                    padding-bottom: 10px;
+                    -webkit-overflow-scrolling: touch;
+                    display: flex;
+                    justify-content: center; /* Center on desktop */
+                }
+                
+                /* On Mobile: Align start so you can scroll freely */
+                @media (max-width: 768px) {
+                    .grid-scroll-wrapper {
+                        justify-content: flex-start; 
+                    }
+                }
+
+                .rows-container { 
+                    display: flex; 
+                    flex-direction: column; 
+                    gap: 10px; 
+                    align-items: center; 
+                    /* FIX: Ensure it doesn't squish */
+                    min-width: max-content; 
+                    padding: 0 10px;
+                }
+
                 .seat-row { display: flex; align-items: center; gap: 10px; }
                 .row-label { width: 30px; text-align: right; font-weight: bold; color: rgba(255,255,255,0.7); }
                 .seats-grid { display: flex; gap: 6px; }
@@ -96,6 +122,7 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
                     width: 30px; height: 30px; border-radius: 6px; border: none;
                     display: flex; align-items: center; justify-content: center;
                     font-size: 0.7rem; cursor: pointer; transition: transform 0.1s; color: white;
+                    flex-shrink: 0; /* Prevent seats from squishing */
                 }
                 .seat:hover:not(:disabled) { transform: scale(1.1); }
                 .seat.available { background-color: #28a745; box-shadow: 0 2px 5px rgba(40, 167, 69, 0.3); }
@@ -105,6 +132,7 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
                 .legend {
                     display: flex; justify-content: center; gap: 20px; margin-top: 30px;
                     padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);
+                    flex-wrap: wrap;
                 }
                 .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: rgba(255,255,255,0.7); }
                 .legend-dot { width: 15px; height: 15px; border-radius: 3px; }
@@ -126,30 +154,33 @@ export default function SeatingChart({ seats, onSeatSelect, selectedSeats, guest
 
             <div className="stage-indicator">Stage</div>
 
-            <div className="rows-container">
-                {activeSection && seatingMap[activeSection] && Object.keys(seatingMap[activeSection]).map(rowLabel => (
-                    <div key={rowLabel} className="seat-row">
-                        <div className="row-label">{rowLabel}</div>
-                        <div className="seats-grid">
-                            {seatingMap[activeSection][rowLabel].map(seat => {
-                                const status = getSeatStatus(seat);
-                                // Is it clickable? Only if available OR if it's selected (to unselect)
-                                const isClickable = status === 'available' || status === 'selected';
-                                return (
-                                    <button
-                                        key={seat._id}
-                                        className={`seat ${status}`}
-                                        onClick={() => isClickable ? onSeatSelect(seat) : null}
-                                        disabled={!isClickable}
-                                        title={`Row ${seat.row} Seat ${seat.number} - $${seat.price}`}
-                                    >
-                                        {seat.number}
-                                    </button>
-                                );
-                            })}
+            {/* WRAPPER FOR SCROLLING */}
+            <div className="grid-scroll-wrapper">
+                <div className="rows-container">
+                    {activeSection && seatingMap[activeSection] && Object.keys(seatingMap[activeSection]).map(rowLabel => (
+                        <div key={rowLabel} className="seat-row">
+                            <div className="row-label">{rowLabel}</div>
+                            <div className="seats-grid">
+                                {seatingMap[activeSection][rowLabel].map(seat => {
+                                    const status = getSeatStatus(seat);
+                                    // Is it clickable? Only if available OR if it's selected (to unselect)
+                                    const isClickable = status === 'available' || status === 'selected';
+                                    return (
+                                        <button
+                                            key={seat._id}
+                                            className={`seat ${status}`}
+                                            onClick={() => isClickable ? onSeatSelect(seat) : null}
+                                            disabled={!isClickable}
+                                            title={`Row ${seat.row} Seat ${seat.number} - $${seat.price}`}
+                                        >
+                                            {seat.number}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
 
             <div className="legend">
