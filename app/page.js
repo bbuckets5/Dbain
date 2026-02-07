@@ -55,7 +55,8 @@ export default async function HomePage(props) {
                         
                         return (
                             <Link href={`/events/${event._id}`} key={event._id} className="event-link">
-                                <div className="event-card glass">
+                                {/* FIX: Added position: relative so the badge stays inside the card */}
+                                <div className="event-card glass" style={{ position: 'relative' }}>
                                     <Image 
                                         src={event.flyerImageThumbnailPath || 'https://placehold.co/600x400/2c5364/ffffff?text=No+Image'} 
                                         alt={`${event.eventName} Flyer`} 
@@ -83,7 +84,8 @@ export default async function HomePage(props) {
                                             padding: '4px 8px', 
                                             borderRadius: '4px',
                                             fontSize: '0.7rem',
-                                            fontWeight: 'bold'
+                                            fontWeight: 'bold',
+                                            zIndex: 10
                                         }}>
                                             Reserved Seating
                                         </span>
